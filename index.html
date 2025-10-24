@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -131,6 +131,11 @@
       align-items: flex-start;
     }
 
+    .faq-item.loading {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
     .faq-rank {
       background: #667eea;
       color: white;
@@ -145,10 +150,20 @@
       flex-shrink: 0;
     }
 
+    .faq-text {
+      flex: 1;
+      line-height: 1.4;
+    }
+
     .faq-item:hover {
       border-color: #667eea;
       box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
       transform: translateY(-1px);
+    }
+
+    .faq-item:active {
+      transform: translateY(0);
+      box-shadow: 0 1px 4px rgba(102, 126, 234, 0.15);
     }
 
     .chat-area {
@@ -291,39 +306,10 @@
       font-weight: 600;
     }
 
-    .feedback-buttons {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-
-    .feedback-btn {
-      padding: 6px 12px;
-      border: 1px solid #e5e7eb;
-      background: white;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .feedback-btn:hover {
-      border-color: #667eea;
-      background: #f3f4f6;
-    }
-
-    .feedback-btn.positive:hover { color: #10b981; border-color: #10b981; }
-    .feedback-btn.negative:hover { color: #ef4444; border-color: #ef4444; }
-    .feedback-btn.escalate { color: #f59e0b; }
-    .feedback-btn.escalate:hover { border-color: #f59e0b; background: #fffbeb; }
-
-    .chat-input-area {
-      padding: 20px 25px;
+    .input-area {
+      padding: 20px;
+      background: #fafbfc;
       border-top: 1px solid #e5e7eb;
-      background: #f9fafb;
     }
 
     .input-container {
@@ -332,49 +318,50 @@
       align-items: flex-end;
     }
 
-    .input-wrapper {
+    #messageInput {
       flex: 1;
-      position: relative;
-    }
-
-    #userInput {
-      width: 100%;
       padding: 14px 18px;
-      border: 2px solid #e5e7eb;
+      border: 1px solid #d1d5db;
       border-radius: 12px;
       font-size: 14px;
+      outline: none;
+      transition: all 0.2s;
       resize: none;
       font-family: inherit;
-      transition: all 0.2s;
-      min-height: 50px;
       max-height: 120px;
     }
 
-    #userInput:focus {
-      outline: none;
+    #messageInput:focus {
       border-color: #667eea;
       box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
 
-    #sendBtn {
+    #sendButton {
       padding: 14px 24px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       border: none;
       border-radius: 12px;
-      cursor: pointer;
       font-size: 14px;
       font-weight: 600;
-      transition: all 0.2s;
-      white-space: nowrap;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    #sendBtn:hover:not(:disabled) {
-      transform: translateY(-2px);
+    #sendButton:hover:not(:disabled) {
+      transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
 
-    #sendBtn:disabled {
+    #sendButton:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+    }
+
+    #sendButton:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
@@ -386,14 +373,13 @@
       background: #f3f4f6;
       border-radius: 18px;
       border-bottom-left-radius: 4px;
-      width: fit-content;
     }
 
     .typing-dot {
       width: 8px;
       height: 8px;
+      background: #6b7280;
       border-radius: 50%;
-      background: #9ca3af;
       animation: typing 1.4s infinite;
     }
 
@@ -401,35 +387,88 @@
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
     @keyframes typing {
-      0%, 60%, 100% { transform: translateY(0); }
-      30% { transform: translateY(-10px); }
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.5;
+      }
+      30% {
+        transform: translateY(-10px);
+        opacity: 1;
+      }
+    }
+
+    .feedback-buttons {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .feedback-btn {
+      padding: 6px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: white;
+      color: #374151;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .feedback-btn:hover {
+      border-color: #667eea;
+      background: #f3f4ff;
+      transform: translateY(-1px);
+    }
+
+    .feedback-btn:active {
+      transform: translateY(0);
+    }
+
+    .feedback-btn.clicked {
+      background: #667eea;
+      color: white;
+      pointer-events: none;
     }
 
     .modal {
       display: none;
       position: fixed;
-      top: 0;
+      z-index: 1000;
       left: 0;
+      top: 0;
       width: 100%;
       height: 100%;
       background: rgba(0, 0, 0, 0.5);
-      z-index: 1000;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
+      animation: fadeIn 0.3s;
     }
 
     .modal.active {
       display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .modal-content {
       background: white;
-      border-radius: 16px;
       padding: 30px;
+      border-radius: 16px;
       max-width: 500px;
-      width: 100%;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      animation: slideUp 0.3s;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .modal-header {
@@ -439,90 +478,124 @@
       color: #1f2937;
     }
 
-    .rating-stars {
-      display: flex;
-      gap: 8px;
-      justify-content: center;
-      margin: 20px 0;
+    .modal-body {
+      margin-bottom: 20px;
     }
 
-    .star {
-      font-size: 32px;
-      cursor: pointer;
-      color: #d1d5db;
-      transition: all 0.2s;
-    }
-
-    .star:hover,
-    .star.active {
-      color: #fbbf24;
-      transform: scale(1.2);
-    }
-
-    textarea {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 14px;
-      resize: vertical;
-      min-height: 100px;
-    }
-
-    .modal-buttons {
+    .modal-footer {
       display: flex;
       gap: 10px;
-      margin-top: 20px;
+      justify-content: flex-end;
     }
 
     .modal-btn {
-      flex: 1;
-      padding: 12px;
-      border: none;
+      padding: 10px 20px;
       border-radius: 8px;
-      cursor: pointer;
+      border: none;
       font-size: 14px;
-      font-weight: 600;
-      transition: all 0.2s;
+      cursor: pointer;
+      transition: all 0.15s;
     }
 
-    .modal-btn-primary {
+    .modal-btn.primary {
       background: #667eea;
       color: white;
     }
 
-    .modal-btn-primary:hover {
-      background: #5568d3;
+    .modal-btn.primary:hover {
+      background: #5a67d8;
+      transform: translateY(-1px);
     }
 
-    .modal-btn-secondary {
+    .modal-btn.primary:active {
+      transform: translateY(0);
+    }
+
+    .modal-btn.secondary {
       background: #f3f4f6;
       color: #374151;
     }
 
-    .modal-btn-secondary:hover {
+    .modal-btn.secondary:hover {
       background: #e5e7eb;
     }
 
-    .input-group {
-      margin-bottom: 15px;
+    .form-group {
+      margin-bottom: 16px;
     }
 
-    .input-group label {
+    .form-label {
       display: block;
-      font-size: 13px;
-      font-weight: 600;
-      color: #374151;
       margin-bottom: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      color: #374151;
     }
 
-    .input-group input {
+    .form-input, .form-textarea {
       width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #e5e7eb;
+      padding: 10px 14px;
+      border: 1px solid #d1d5db;
       border-radius: 8px;
       font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .form-input:focus, .form-textarea:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    .star-rating {
+      display: flex;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .star {
+      font-size: 24px;
+      color: #d1d5db;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .star:hover {
+      color: #fbbf24;
+      transform: scale(1.1);
+    }
+
+    .star.active {
+      color: #fbbf24;
+    }
+
+    .welcome-message {
+      text-align: center;
+      padding: 40px;
+      color: #6b7280;
+    }
+
+    .welcome-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .welcome-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+
+    .welcome-text {
+      font-size: 14px;
+      line-height: 1.6;
     }
 
     @media (max-width: 768px) {
@@ -532,15 +605,8 @@
         border-radius: 0;
       }
 
-      .main-content {
-        flex-direction: column;
-      }
-
       .sidebar {
-        width: 100%;
-        max-height: 200px;
-        border-right: none;
-        border-bottom: 1px solid #e5e7eb;
+        display: none;
       }
 
       .message-content {
@@ -551,62 +617,50 @@
 </head>
 <body>
   <div class="container">
-    <!-- Header -->
     <div class="header">
       <div class="header-icon">🎓</div>
       <div class="header-content">
         <h1>교무지원과 AI 상담 챗봇</h1>
-        <p>AI 기반 규정 검색 및 상담 서비스 (v1.2 - CORS Free)</p>
+        <p>교원 인사 및 행정 업무에 대해 무엇이든 물어보세요</p>
       </div>
       <div class="header-badges">
-        <span class="badge badge-ai">✨ AI</span>
-        <span class="badge badge-free">🔓 무료</span>
+        <span class="badge badge-ai">AI 지원</span>
+        <span class="badge badge-free">Beta</span>
       </div>
     </div>
 
-    <!-- Main Content -->
     <div class="main-content">
-      <!-- Sidebar: FAQ -->
       <div class="sidebar">
-        <h3>
-          <span>💡</span>
-          자주 묻는 질문
-        </h3>
+        <h3>📌 자주 묻는 질문 TOP 5</h3>
         <div id="faqList" class="faq-list">
-          <div style="color: #9ca3af; text-align: center; padding: 20px; font-size: 13px;">
-            FAQ 로딩 중...
-          </div>
+          <!-- FAQ 항목들이 여기 로드됩니다 -->
         </div>
       </div>
 
-      <!-- Chat Area -->
       <div class="chat-area">
         <div id="chatMessages" class="chat-messages">
-          <!-- Welcome Message -->
-          <div class="message bot">
-            <div class="avatar">🤖</div>
-            <div class="message-content">
-              <div class="message-bubble">
-                안녕하세요! 교무지원과 AI 상담 챗봇입니다. 😊<br><br>
-                교원 인사, 규정, 업무 절차 등에 대해 질문해주세요.<br>
-                왼쪽의 자주 묻는 질문을 클릭하거나 직접 질문을 입력하실 수 있습니다.
-              </div>
+          <div class="welcome-message">
+            <div class="welcome-icon">🤖</div>
+            <div class="welcome-title">안녕하세요! 교무지원과 AI 챗봇입니다</div>
+            <div class="welcome-text">
+              교원 인사, 재임용, 휴직, 연구년 등<br>
+              교무 관련 업무에 대해 도움을 드립니다.<br>
+              왼쪽의 자주 묻는 질문을 클릭하거나<br>
+              아래에 직접 질문을 입력해주세요.
             </div>
           </div>
         </div>
 
-        <!-- Input Area -->
-        <div class="chat-input-area">
+        <div class="input-area">
           <div class="input-container">
-            <div class="input-wrapper">
-              <textarea
-                id="userInput"
-                placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
-                onkeypress="handleKeyPress(event)"
-              ></textarea>
-            </div>
-            <button id="sendBtn" onclick="sendMessage()">
-              전송
+            <textarea 
+              id="messageInput" 
+              placeholder="질문을 입력하세요... (Shift+Enter로 줄바꿈)"
+              rows="1"
+            ></textarea>
+            <button id="sendButton">
+              <span>전송</span>
+              <span>➤</span>
             </button>
           </div>
         </div>
@@ -614,235 +668,254 @@
     </div>
   </div>
 
-  <!-- Feedback Modal -->
+  <!-- 피드백 모달 -->
   <div id="feedbackModal" class="modal">
     <div class="modal-content">
-      <div class="modal-header">답변이 도움이 되셨나요?</div>
-      <div class="rating-stars" id="ratingStars">
-        <span class="star" onclick="setRating(1)">★</span>
-        <span class="star" onclick="setRating(2)">★</span>
-        <span class="star" onclick="setRating(3)">★</span>
-        <span class="star" onclick="setRating(4)">★</span>
-        <span class="star" onclick="setRating(5)">★</span>
+      <div class="modal-header">📝 답변 평가</div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">답변이 도움이 되었나요? 별점을 남겨주세요:</label>
+          <div class="star-rating">
+            <span class="star" onclick="setRating(1)">★</span>
+            <span class="star" onclick="setRating(2)">★</span>
+            <span class="star" onclick="setRating(3)">★</span>
+            <span class="star" onclick="setRating(4)">★</span>
+            <span class="star" onclick="setRating(5)">★</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">추가 의견 (선택사항):</label>
+          <textarea id="feedbackComment" class="form-textarea" placeholder="더 나은 서비스를 위해 의견을 남겨주세요..."></textarea>
+        </div>
       </div>
-      <textarea id="feedbackComment" placeholder="의견을 남겨주세요 (선택사항)"></textarea>
-      <div class="modal-buttons">
-        <button class="modal-btn modal-btn-secondary" onclick="closeFeedbackModal()">취소</button>
-        <button class="modal-btn modal-btn-primary" onclick="submitFeedback()">제출</button>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" onclick="closeFeedbackModal()">취소</button>
+        <button class="modal-btn primary" onclick="submitFeedback()">제출</button>
       </div>
     </div>
   </div>
 
-  <!-- Escalation Modal -->
+  <!-- 에스컬레이션 모달 -->
   <div id="escalationModal" class="modal">
     <div class="modal-content">
-      <div class="modal-header">담당자 연결 요청</div>
-      <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">
-        담당자가 직접 답변드릴 수 있도록 연락처를 남겨주세요.
-      </p>
-      <div class="input-group">
-        <label>이메일</label>
-        <input type="email" id="escalationEmail" placeholder="example@university.ac.kr">
+      <div class="modal-header">👤 담당자 연결 요청</div>
+      <div class="modal-body">
+        <p style="margin-bottom: 20px; color: #6b7280;">
+          담당자가 직접 답변해드릴 수 있도록<br>
+          연락처 정보를 남겨주세요.
+        </p>
+        <div class="form-group">
+          <label class="form-label">이메일 *</label>
+          <input type="email" id="escalationEmail" class="form-input" placeholder="your@email.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">전화번호 (선택)</label>
+          <input type="tel" id="escalationPhone" class="form-input" placeholder="010-1234-5678">
+        </div>
       </div>
-      <div class="input-group">
-        <label>전화번호 (선택)</label>
-        <input type="tel" id="escalationPhone" placeholder="010-0000-0000">
-      </div>
-      <div class="modal-buttons">
-        <button class="modal-btn modal-btn-secondary" onclick="closeEscalationModal()">취소</button>
-        <button class="modal-btn modal-btn-primary" onclick="submitEscalation()">요청하기</button>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" onclick="closeEscalationModal()">취소</button>
+        <button class="modal-btn primary" onclick="submitEscalation()">요청하기</button>
       </div>
     </div>
   </div>
 
   <script>
     // ==================== 설정 ====================
-    // ⚠️ 배포된 Apps Script URL을 여기에 입력하세요!
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzle0C6ZDUyKif7t-PO_vE3vViRj7l6It3Mi9_njIBFVnCYm1t1w-qHWCeVesXB_QJrcA/exec';  // 예: https://script.google.com/macros/s/AKfycby.../exec
-
-    // ==================== 전역 변수 ====================
-    const sessionId = generateSessionId();
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzle0C6ZDUyKif7t-PO_vE3vViRj7l6It3Mi9_njIBFVnCYm1t1w-qHWCeVesXB_QJrcA/exec';
+    const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    let isLoading = false;
     let pendingFeedback = null;
     let pendingEscalation = null;
     let currentRating = 0;
 
-    // ==================== 유틸리티 함수 ====================
-    function generateSessionId() {
-      return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    function generateMessageId() {
-      return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    // ==================== 페이지 로드 ====================
-    window.onload = function() {
-      if (!SCRIPT_URL) {
-        showError('⚠️ 설정 필요\n\nSCRIPT_URL 변수에 배포된 Apps Script URL을 입력해주세요.\n\n배포 방법:\n1. Apps Script 편집기\n2. 배포 > 새 배포\n3. 유형: 웹 앱\n4. 액세스: 모든 사용자\n5. URL 복사하여 붙여넣기');
-      } else {
-        loadFAQ();
-        document.getElementById('userInput').focus();
-      }
-    };
-
-    function showError(message) {
-      const faqList = document.getElementById('faqList');
-      faqList.innerHTML = '<div style="color: #ef4444; background: #fee2e2; padding: 15px; border-radius: 8px; white-space: pre-line; font-size: 12px; line-height: 1.6;">' + message + '</div>';
-    }
-
-    // ==================== FAQ 로딩 (GET 방식) ====================
-    async function loadFAQ() {
-      const faqList = document.getElementById('faqList');
+    // ==================== 초기화 ====================
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('🎓 교무지원과 AI 챗봇 초기화');
+      console.log('세션 ID:', sessionId);
       
+      loadFAQs();
+      setupEventListeners();
+    });
+
+    // ==================== FAQ 로드 ====================
+    async function loadFAQs() {
       try {
         console.log('FAQ 로딩 시작...');
-        console.log('SCRIPT_URL:', SCRIPT_URL);
         
-        // ⭐ GET 방식으로 변경 (preflight 회피)
-        const url = `${SCRIPT_URL}?action=getFAQ&limit=5`;
+        const faqList = document.getElementById('faqList');
         
-        const response = await fetch(url, {
+        // 로딩 표시
+        faqList.innerHTML = '<div style="text-align: center; color: #9ca3af;">FAQ를 불러오는 중...</div>';
+        
+        const response = await fetch(SCRIPT_URL + '?action=getFAQ&limit=5', {
           method: 'GET',
-          mode: 'cors',
-          cache: 'no-cache'
+          mode: 'cors'
         });
         
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-        
-        if (!response.ok) {
-          throw new Error('API 응답 오류: ' + response.status);
-        }
-        
         const data = await response.json();
-        console.log('FAQ 데이터:', data);
+        console.log('FAQ 응답:', data);
         
-        if (data.success && data.faqs && data.faqs.length > 0) {
-          faqList.innerHTML = '';
-          
-          // FAQ 데이터 구조 확인
-          console.log('첫 번째 FAQ:', data.faqs[0]);
-          
-          data.faqs.forEach((faq, index) => {
-            // FAQ 항목 디버깅
-            console.log(`FAQ ${index + 1}:`, faq);
-            
-            const faqDiv = document.createElement('div');
-            faqDiv.className = 'faq-item';
-            
-            // question 필드가 없으면 다른 필드 시도
-            const question = faq.question || faq.title || faq.q || '질문 없음';
-            
-            // 랭크 div
-            const rankDiv = document.createElement('div');
-            rankDiv.className = 'faq-rank';
-            rankDiv.textContent = index + 1;
-            
-            // 질문 div
-            const questionDiv = document.createElement('div');
-            questionDiv.textContent = question;
-            
-            faqDiv.appendChild(rankDiv);
-            faqDiv.appendChild(questionDiv);
-            faqDiv.onclick = () => askFAQ(question);
-            
-            faqList.appendChild(faqDiv);
-          });
-          console.log('FAQ ' + data.faqs.length + '개 표시 완료');
+        if (data.success && data.faqs && Array.isArray(data.faqs)) {
+          displayFAQs(data.faqs);
         } else {
-          console.warn('FAQ 데이터 없음 또는 형식 오류:', data);
-          faqList.innerHTML = '<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.</div>';
+          console.error('FAQ 데이터 형식 오류:', data);
+          displayDefaultFAQs();
         }
         
       } catch (error) {
         console.error('FAQ 로드 오류:', error);
-        
-        let errorMsg = 'FAQ를 불러올 수 없습니다.';
-        
-        if (error.message.includes('Failed to fetch')) {
-          errorMsg += '<br><br>📌 확인사항:<br>1. Apps Script 배포 완료?<br>2. SCRIPT_URL 정확?<br>3. 액세스: 모든 사용자?';
-        } else {
-          errorMsg += '<br><br>오류: ' + error.message;
-        }
-        
-        faqList.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 15px; line-height: 1.6; font-size: 12px;">' + errorMsg + '</div>';
+        displayDefaultFAQs();
       }
     }
 
-    // FAQ 클릭
-    function askFAQ(question) {
-      document.getElementById('userInput').value = question;
-      sendMessage();
+    // FAQ 표시
+    function displayFAQs(faqs) {
+      const faqList = document.getElementById('faqList');
+      faqList.innerHTML = '';
+      
+      console.log('FAQ 표시:', faqs.length, '개');
+      
+      faqs.forEach((faq, index) => {
+        const item = document.createElement('div');
+        item.className = 'faq-item';
+        
+        const rank = document.createElement('div');
+        rank.className = 'faq-rank';
+        rank.textContent = (index + 1).toString();
+        
+        const text = document.createElement('div');
+        text.className = 'faq-text';
+        text.textContent = faq.question || `질문 ${index + 1}`;
+        
+        item.appendChild(rank);
+        item.appendChild(text);
+        
+        // 클릭 이벤트 - 즉각 피드백
+        item.addEventListener('click', async function() {
+          if (item.classList.contains('loading')) return;
+          
+          // 즉시 시각적 피드백
+          item.classList.add('loading');
+          
+          // 질문 보내기
+          await sendMessage(faq.question);
+          
+          // 로딩 상태 해제
+          setTimeout(() => {
+            item.classList.remove('loading');
+          }, 500);
+        });
+        
+        faqList.appendChild(item);
+      });
     }
 
-    // ==================== 메시지 전송 (POST - URLSearchParams) ====================
-    async function sendMessage() {
-      const input = document.getElementById('userInput');
-      const question = input.value.trim();
+    // 기본 FAQ 표시 (API 오류 시)
+    function displayDefaultFAQs() {
+      const defaultFaqs = [
+        { question: '재임용 심사 기준은 무엇인가요?' },
+        { question: '휴직 신청은 어떻게 하나요?' },
+        { question: '연구년 신청 자격은 어떻게 되나요?' },
+        { question: '승진임용 절차가 궁금합니다' },
+        { question: '출장 복명서는 언제까지 제출하나요?' }
+      ];
       
-      if (!question) return;
+      displayFAQs(defaultFaqs);
+    }
+
+    // ==================== 이벤트 리스너 ====================
+    function setupEventListeners() {
+      const messageInput = document.getElementById('messageInput');
+      const sendButton = document.getElementById('sendButton');
+      
+      // 전송 버튼 클릭
+      sendButton.addEventListener('click', handleSendClick);
+      
+      // Enter 키 처리
+      messageInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSendClick();
+        }
+      });
+      
+      // 자동 높이 조절
+      messageInput.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+      });
+    }
+
+    // 전송 버튼 클릭 처리
+    async function handleSendClick() {
+      const messageInput = document.getElementById('messageInput');
+      const message = messageInput.value.trim();
+      
+      if (message && !isLoading) {
+        // 즉시 입력창 비우고 전송
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+        await sendMessage(message);
+      }
+    }
+
+    // ==================== 메시지 전송 ====================
+    async function sendMessage(message) {
+      if (isLoading) return;
+      
+      isLoading = true;
+      const sendButton = document.getElementById('sendButton');
+      sendButton.disabled = true;
+      sendButton.innerHTML = '<span>전송 중...</span>';
       
       // 사용자 메시지 추가
-      addMessage('user', question);
-      input.value = '';
-      
-      // 입력창 높이 초기화
-      input.style.height = '50px';
+      addMessage('user', message);
       
       // 타이핑 인디케이터 추가
       const typingId = addTypingIndicator();
       
       try {
-        console.log('메시지 전송:', question);
-        
-        // ⭐ URLSearchParams 사용 (preflight 회피)
         const formData = new URLSearchParams();
         formData.append('action', 'chat');
-        formData.append('question', question);
         formData.append('sessionId', sessionId);
+        formData.append('question', message);
         formData.append('userRole', 'faculty');
         
         const response = await fetch(SCRIPT_URL, {
           method: 'POST',
-          body: formData,  // application/x-www-form-urlencoded
-          mode: 'cors',
-          cache: 'no-cache'
+          body: formData,
+          mode: 'cors'
         });
+        
+        const data = await response.json();
+        console.log('챗봇 응답:', data);
         
         // 타이핑 인디케이터 제거
         removeTypingIndicator(typingId);
         
-        if (!response.ok) {
-          throw new Error('API 응답 오류: ' + response.status);
-        }
-        
-        const data = await response.json();
-        console.log('응답 데이터:', data);
-        
         if (data.success) {
           addMessage('bot', data.answer, {
             sources: data.sources || [],
-            confidence: data.confidence || 0.5,
-            messageId: data.messageId || generateMessageId()
+            confidence: data.confidence || 0.8,
+            messageId: data.messageId
           });
         } else if (data.filtered) {
           addMessage('bot', data.error, { isError: true });
         } else {
-          throw new Error(data.error || '알 수 없는 오류');
+          addMessage('bot', '죄송합니다. 답변을 생성하는데 문제가 발생했습니다.', { isError: true });
         }
         
       } catch (error) {
-        console.error('Error:', error);
+        console.error('메시지 전송 오류:', error);
         removeTypingIndicator(typingId);
-        addMessage('bot', '죄송합니다. 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.\n\n오류: ' + error.message, { isError: true });
-      }
-    }
-
-    // 키 입력 처리
-    function handleKeyPress(event) {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
+        addMessage('bot', '네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.', { isError: true });
+        
+      } finally {
+        isLoading = false;
+        sendButton.disabled = false;
+        sendButton.innerHTML = '<span>전송</span><span>➤</span>';
       }
     }
 
@@ -896,11 +969,6 @@
         if (options.sources && options.sources.length > 0) {
           sourcesHtml = '<div class="sources"><div class="sources-title">📚 참고 문서</div>';
           options.sources.forEach(source => {
-            const category = document.createElement('div');
-            category.textContent = source.category;
-            const filename = document.createElement('div');
-            filename.textContent = source.filename;
-            
             sourcesHtml += `
               <div class="source-item">
                 <span class="source-category">${source.category || ''}</span>
@@ -952,18 +1020,25 @@
         
         if (positiveBtn) {
           positiveBtn.addEventListener('click', function() {
+            // 즉시 시각적 피드백
+            this.classList.add('clicked');
+            this.textContent = '✓ 감사합니다!';
             giveFeedback(options.messageId, text, 'positive');
           });
         }
         
         if (negativeBtn) {
           negativeBtn.addEventListener('click', function() {
+            // 즉시 시각적 피드백
+            this.classList.add('clicked');
             giveFeedback(options.messageId, text, 'negative');
           });
         }
         
         if (escalateBtn) {
           escalateBtn.addEventListener('click', function() {
+            // 즉시 시각적 피드백
+            this.classList.add('clicked');
             requestEscalation(text);
           });
         }
@@ -1034,7 +1109,6 @@
       const comment = document.getElementById('feedbackComment').value.trim();
       
       try {
-        // ⭐ URLSearchParams 사용
         const formData = new URLSearchParams();
         formData.append('action', 'feedback');
         formData.append('sessionId', sessionId);
@@ -1084,7 +1158,6 @@
       }
       
       try {
-        // ⭐ URLSearchParams 사용
         const formData = new URLSearchParams();
         formData.append('action', 'escalate');
         formData.append('sessionId', sessionId);
