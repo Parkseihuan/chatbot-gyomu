@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>교무지원과 AI 상담 챗봇</title>
+  <title>용인대학교 교무지원과 AI 챗봇</title>
   <style>
     * {
       margin: 0;
@@ -230,6 +230,98 @@
       background: #667eea;
       color: white;
       border-bottom-right-radius: 4px;
+    }
+    
+    /* 마크다운 스타일 */
+    .markdown-content {
+      word-wrap: break-word;
+    }
+    
+    .markdown-content p {
+      margin: 0 0 12px 0;
+    }
+    
+    .markdown-content p:last-child {
+      margin-bottom: 0;
+    }
+    
+    .markdown-content h1,
+    .markdown-content h2,
+    .markdown-content h3 {
+      margin: 16px 0 8px 0;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    
+    .markdown-content h1 {
+      font-size: 18px;
+      color: #667eea;
+    }
+    
+    .markdown-content h2 {
+      font-size: 16px;
+      color: #374151;
+    }
+    
+    .markdown-content h3 {
+      font-size: 15px;
+      color: #4b5563;
+    }
+    
+    .markdown-content strong {
+      font-weight: 600;
+      color: #1f2937;
+    }
+    
+    .markdown-content em {
+      font-style: italic;
+    }
+    
+    .markdown-content code {
+      background: #e5e7eb;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      color: #dc2626;
+    }
+    
+    .markdown-content pre {
+      background: #1f2937;
+      color: #f9fafb;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    
+    .markdown-content pre code {
+      background: none;
+      padding: 0;
+      color: #f9fafb;
+      font-size: 13px;
+    }
+    
+    .markdown-content ul,
+    .markdown-content ol {
+      margin: 8px 0;
+      padding-left: 24px;
+    }
+    
+    .markdown-content li {
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+    
+    .markdown-content a {
+      color: #667eea;
+      text-decoration: none;
+      border-bottom: 1px solid #667eea;
+    }
+    
+    .markdown-content a:hover {
+      color: #5568d3;
+      border-bottom-color: #5568d3;
     }
 
     .message-meta {
@@ -555,7 +647,7 @@
     <div class="header">
       <div class="header-icon">🎓</div>
       <div class="header-content">
-        <h1>교무지원과 AI 상담 챗봇</h1>
+        <h1>용인대학교 교무지원과 AI 챗봇</h1>
         <p>AI 기반 규정 검색 및 상담 서비스 (v1.2 - CORS Free)</p>
       </div>
       <div class="header-badges">
@@ -587,7 +679,7 @@
             <div class="avatar">🤖</div>
             <div class="message-content">
               <div class="message-bubble">
-                안녕하세요! 교무지원과 AI 상담 챗봇입니다. 😊<br><br>
+                안녕하세요! 용인대학교 교무지원과 AI 챗봇입니다. 😊<br><br>
                 교원 인사, 규정, 업무 절차 등에 대해 질문해주세요.<br>
                 왼쪽의 자주 묻는 질문을 클릭하거나 직접 질문을 입력하실 수 있습니다.
               </div>
@@ -658,7 +750,7 @@
   <script>
     // ==================== 설정 ====================
     // ⚠️ 배포된 Apps Script URL을 여기에 입력하세요!
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzle0C6ZDUyKif7t-PO_vE3vViRj7l6It3Mi9_njIBFVnCYm1t1w-qHWCeVesXB_QJrcA/exec';  // 예: https://script.google.com/macros/s/AKfycby.../exec
+    const SCRIPT_URL = '';  // 예: https://script.google.com/macros/s/AKfycby.../exec
 
     // ==================== 전역 변수 ====================
     const sessionId = generateSessionId();
@@ -952,7 +1044,7 @@
         messageDiv.innerHTML = `
           <div class="avatar">🤖</div>
           <div class="message-content">
-            <div class="message-bubble">${escapeHtml(text).replace(/\n/g, '<br>')}</div>
+            <div class="message-bubble markdown-content">${parseMarkdown(text)}</div>
             ${sourcesHtml}
             <div class="message-meta">
               <span>${time}</span>
@@ -1187,6 +1279,59 @@
     }
 
     // ==================== 유틸리티 ====================
+    
+    // 마크다운을 HTML로 변환
+    function parseMarkdown(text) {
+      if (!text) return '';
+      
+      let html = text;
+      
+      // 코드 블록 (```)
+      html = html.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
+      
+      // 인라인 코드 (`)
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+      
+      // 볼드 (**)
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      
+      // 이탤릭 (*)
+      html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      
+      // 헤더 (###, ##, #)
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+      
+      // 번호 리스트
+      html = html.replace(/^\d+\.\s+(.+)$/gm, '<li class="numbered">$1</li>');
+      
+      // 일반 리스트 (-, *)
+      html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
+      
+      // li 태그를 ul로 감싸기
+      html = html.replace(/(<li(?:\s+class="numbered")?>[\s\S]+?<\/li>)(?!\s*<li)/g, function(match) {
+        if (match.includes('class="numbered"')) {
+          return '<ol>' + match + '</ol>';
+        }
+        return '<ul>' + match + '</ul>';
+      });
+      
+      // 링크 [텍스트](URL)
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+      
+      // 줄바꿈
+      html = html.replace(/\n\n/g, '</p><p>');
+      html = html.replace(/\n/g, '<br>');
+      
+      // 단락으로 감싸기
+      if (!html.startsWith('<')) {
+        html = '<p>' + html + '</p>';
+      }
+      
+      return html;
+    }
+    
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
