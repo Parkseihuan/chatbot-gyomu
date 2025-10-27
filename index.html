@@ -748,9 +748,18 @@
   </div>
 
   <script>
-    // ==================== 설정 ====================
+    // ==================== 설정 및 상수 ====================
     // ⚠️ 배포된 Apps Script URL을 여기에 입력하세요!
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzle0C6ZDUyKif7t-PO_vE3vViRj7l6It3Mi9_njIBFVnCYm1t1w-qHWCeVesXB_QJrcA/exec';  // 예: https://script.google.com/macros/s/AKfycby.../exec
+
+    // API 설정
+    const API_CONFIG = {
+      TIMEOUT_MS: 30000,           // 30초 타임아웃
+      MAX_RETRIES: 3,              // 최대 재시도 횟수
+      RETRY_DELAY_MS: 1000,        // 초기 재시도 대기 시간 (1초)
+      FAQ_LIMIT: 5,                // FAQ 표시 개수
+      BUTTON_FEEDBACK_DELAY_MS: 1000  // 버튼 피드백 표시 시간
+    };
 
     // ==================== 전역 변수 ====================
     const sessionId = generateSessionId();
@@ -765,6 +774,78 @@
 
     function generateMessageId() {
       return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // 타임아웃 기능이 있는 fetch
+    async function fetchWithTimeout(url, options = {}, timeout = API_CONFIG.TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new Error('요청 시간 초과 (30초)');
+        }
+        throw error;
+      }
+    }
+
+    // 재시도 로직이 있는 fetch (exponential backoff)
+    async function fetchWithRetry(url, options = {}, maxRetries = API_CONFIG.MAX_RETRIES) {
+      let lastError;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`API 요청 시도 ${attempt + 1}/${maxRetries + 1}`);
+          const response = await fetchWithTimeout(url, options);
+
+          // 성공하면 즉시 반환
+          if (response.ok) {
+            return response;
+          }
+
+          // 4xx 에러는 재시도하지 않음 (클라이언트 오류)
+          if (response.status >= 400 && response.status < 500) {
+            return response;
+          }
+
+          // 5xx 에러는 재시도
+          lastError = new Error(`서버 오류: ${response.status}`);
+
+        } catch (error) {
+          lastError = error;
+
+          // 마지막 시도가 아니면 대기 후 재시도
+          if (attempt < maxRetries) {
+            const delay = API_CONFIG.RETRY_DELAY_MS * Math.pow(2, attempt);
+            console.log(`${delay}ms 후 재시도...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      // 모든 재시도 실패
+      throw lastError || new Error('알 수 없는 네트워크 오류');
+    }
+
+    // 버튼 피드백 표시 (중복 코드 제거)
+    function showButtonFeedback(button, feedbackText, originalText) {
+      button.innerHTML = feedbackText;
+      button.disabled = true;
+      button.style.opacity = '0.6';
+
+      setTimeout(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+        button.style.opacity = '1';
+      }, API_CONFIG.BUTTON_FEEDBACK_DELAY_MS);
     }
 
     // ==================== 페이지 로드 ====================
@@ -785,23 +866,23 @@
     // ==================== FAQ 로딩 (GET 방식) ====================
     async function loadFAQ() {
       const faqList = document.getElementById('faqList');
-      
+
       try {
         console.log('FAQ 로딩 시작...');
         console.log('SCRIPT_URL:', SCRIPT_URL);
-        
-        // ⭐ GET 방식으로 변경 (preflight 회피)
-        const url = `${SCRIPT_URL}?action=getFAQ&limit=5`;
-        
-        const response = await fetch(url, {
+
+        // ⭐ GET 방식으로 변경 (preflight 회피) + 재시도 로직
+        const url = `${SCRIPT_URL}?action=getFAQ&limit=${API_CONFIG.FAQ_LIMIT}`;
+
+        const response = await fetchWithRetry(url, {
           method: 'GET',
           mode: 'cors',
           cache: 'no-cache'
         });
-        
+
         console.log('Response status:', response.status);
         console.log('Response ok:', response.ok);
-        
+
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
@@ -907,24 +988,24 @@
       
       try {
         console.log('메시지 전송:', question);
-        
-        // ⭐ URLSearchParams 사용 (preflight 회피)
+
+        // ⭐ URLSearchParams 사용 (preflight 회피) + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'chat');
         formData.append('question', question);
         formData.append('sessionId', sessionId);
         formData.append('userRole', 'faculty');
-        
-        const response = await fetch(SCRIPT_URL, {
+
+        const response = await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,  // application/x-www-form-urlencoded
           mode: 'cors',
           cache: 'no-cache'
         });
-        
+
         // 타이핑 인디케이터 제거
         removeTypingIndicator(typingId);
-        
+
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
@@ -1062,67 +1143,28 @@
         const positiveBtn = messageDiv.querySelector('.feedback-btn.positive');
         const negativeBtn = messageDiv.querySelector('.feedback-btn.negative');
         const escalateBtn = messageDiv.querySelector('.feedback-btn.escalate');
-        
+
         if (positiveBtn) {
           positiveBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             giveFeedback(options.messageId, text, 'positive');
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
-        
+
         if (negativeBtn) {
           negativeBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             giveFeedback(options.messageId, text, 'negative');
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
-        
+
         if (escalateBtn) {
           escalateBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             requestEscalation(text);
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
       }
@@ -1190,11 +1232,11 @@
 
     async function submitFeedback() {
       if (!pendingFeedback) return;
-      
+
       const comment = document.getElementById('feedbackComment').value.trim();
-      
+
       try {
-        // ⭐ URLSearchParams 사용
+        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'feedback');
         formData.append('sessionId', sessionId);
@@ -1202,19 +1244,19 @@
         formData.append('feedback', pendingFeedback.feedback);
         formData.append('rating', currentRating);
         if (comment) formData.append('comment', comment);
-        
-        await fetch(SCRIPT_URL, {
+
+        await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,
           mode: 'cors'
         });
-        
+
         alert('피드백을 주셔서 감사합니다! 😊');
         closeFeedbackModal();
-        
+
       } catch (error) {
         console.error('피드백 전송 오류:', error);
-        alert('피드백 전송에 실패했습니다.');
+        alert('피드백 전송에 실패했습니다.\n\n오류: ' + error.message);
       }
     }
 
@@ -1234,42 +1276,42 @@
 
     async function submitEscalation() {
       if (!pendingEscalation) return;
-      
+
       const email = document.getElementById('escalationEmail').value.trim();
       const phone = document.getElementById('escalationPhone').value.trim();
-      
+
       if (!email) {
         alert('이메일을 입력해주세요.');
         return;
       }
-      
+
       try {
-        // ⭐ URLSearchParams 사용
+        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'escalate');
         formData.append('sessionId', sessionId);
         formData.append('question', pendingEscalation.question);
         formData.append('userEmail', email);
         if (phone) formData.append('userPhone', phone);
-        
-        const response = await fetch(SCRIPT_URL, {
+
+        const response = await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,
           mode: 'cors'
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
           alert('담당자 연결 요청이 완료되었습니다.\n곧 연락드리겠습니다. 😊');
           closeEscalationModal();
         } else {
           throw new Error(data.error || '알 수 없는 오류');
         }
-        
+
       } catch (error) {
         console.error('에스컬레이션 오류:', error);
-        alert('요청 전송에 실패했습니다.');
+        alert('요청 전송에 실패했습니다.\n\n오류: ' + error.message);
       }
     }
 

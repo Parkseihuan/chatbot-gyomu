@@ -1,12 +1,37 @@
 /**
  * 용인대학교 교무지원과 AI 챗봇 - Apps Script (CORS 완전 해결)
- * v1.2 - GET/POST 방식으로 preflight 회피
+ * v1.3 - 코드 품질 개선, 재시도 로직, 상수 정의
  *
  * 주요 변경사항:
  * - doGet(): FAQ 등 조회용 (preflight 없음)
  * - doPost(): 채팅, 피드백 등 (application/x-www-form-urlencoded)
  * - doOptions() 제거 (불필요)
+ * - 상수 정의 및 매직 넘버 제거
+ * - 에러 처리 개선
  */
+
+// ==================== 상수 정의 ====================
+const CONFIG = {
+  // FAQ 설정
+  DEFAULT_FAQ_LIMIT: 5,
+  SAMPLE_FAQ_COUNT: 5,
+
+  // 문서 검색 설정
+  MAX_DOCUMENTS_PER_FOLDER: 3,
+  MAX_SEARCH_KEYWORDS: 10,
+
+  // Gemini API 설정
+  GEMINI_MODEL: 'gemini-2.5-pro',
+  GEMINI_TEMPERATURE: 0.7,
+  GEMINI_MAX_TOKENS: 1000,
+
+  // 기본 이메일
+  DEFAULT_ADMIN_EMAIL: 'admin@university.ac.kr',
+  DEFAULT_ESCALATION_EMAIL: 'support@university.ac.kr',
+
+  // 로그 설정
+  LOG_TEXT_MAX_LENGTH: 50
+};
 
 // ==================== 설정 ====================
 function getConfig() {
@@ -14,8 +39,8 @@ function getConfig() {
   return {
     spreadsheetId: props.getProperty('SPREADSHEET_ID'),
     geminiApiKey: props.getProperty('GEMINI_API_KEY'),
-    adminEmail: props.getProperty('ADMIN_EMAIL') || 'admin@university.ac.kr',
-    escalationEmail: props.getProperty('ESCALATION_EMAIL') || 'support@university.ac.kr',
+    adminEmail: props.getProperty('ADMIN_EMAIL') || CONFIG.DEFAULT_ADMIN_EMAIL,
+    escalationEmail: props.getProperty('ESCALATION_EMAIL') || CONFIG.DEFAULT_ESCALATION_EMAIL,
     folders: {
       '규정집': props.getProperty('FOLDER_규정집'),
       '상위법': props.getProperty('FOLDER_상위법'),
@@ -137,7 +162,7 @@ function doPost(e) {
 }
 
 // ==================== FAQ 조회 ====================
-function getFAQ(limit = 5) {
+function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
   try {
     Logger.log('=== getFAQ 시작 ===');
     Logger.log('Limit: ' + limit);
@@ -207,7 +232,7 @@ function getFAQ(limit = 5) {
 }
 
 // 샘플 FAQ 데이터
-function getSampleFAQs(limit = 5) {
+function getSampleFAQs(limit = CONFIG.SAMPLE_FAQ_COUNT) {
   const allFaqs = [
     {
       question: '재임용 심사 기준은 무엇인가요?',
@@ -319,7 +344,7 @@ function searchDocuments(query, config) {
         );
 
         let count = 0;
-        while (files.hasNext() && count < 3) {
+        while (files.hasNext() && count < CONFIG.MAX_DOCUMENTS_PER_FOLDER) {
           const file = files.next();
           documents.push({
             filename: file.getName(),
@@ -393,7 +418,7 @@ ${context}
 
 답변:`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${config.geminiApiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
     const payload = {
       contents: [{
@@ -402,8 +427,8 @@ ${context}
         }]
       }],
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1000
+        temperature: CONFIG.GEMINI_TEMPERATURE,
+        maxOutputTokens: CONFIG.GEMINI_MAX_TOKENS
       }
     };
 
@@ -608,7 +633,7 @@ function checkSensitiveInfo(text) {
               new Date(),
               pattern.name,
               '질문 차단',
-              text.substring(0, 50) + '...'
+              text.substring(0, CONFIG.LOG_TEXT_MAX_LENGTH) + '...'
             ]);
           }
         }
@@ -721,7 +746,7 @@ function testGeminiKey() {
 
   // 간단한 테스트 요청
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${config.geminiApiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
     const payload = {
       contents: [{
@@ -730,7 +755,7 @@ function testGeminiKey() {
         }]
       }],
       generationConfig: {
-        temperature: 0.7,
+        temperature: CONFIG.GEMINI_TEMPERATURE,
         maxOutputTokens: 100
       }
     };
