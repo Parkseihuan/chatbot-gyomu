@@ -427,6 +427,7 @@
     .input-wrapper {
       flex: 1;
       position: relative;
+      padding-bottom: 20px;
     }
 
     #userInput {
@@ -695,7 +696,12 @@
                 id="userInput"
                 placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
                 onkeypress="handleKeyPress(event)"
+                oninput="updateCharCount()"
+                maxlength="1000"
               ></textarea>
+              <div id="charCount" style="position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #9ca3af;">
+                0/1000
+              </div>
             </div>
             <button id="sendBtn" onclick="sendMessage()">
               전송
@@ -759,6 +765,13 @@
       RETRY_DELAY_MS: 1000,        // 초기 재시도 대기 시간 (1초)
       FAQ_LIMIT: 5,                // FAQ 표시 개수
       BUTTON_FEEDBACK_DELAY_MS: 1000  // 버튼 피드백 표시 시간
+    };
+
+    // 입력 검증 설정
+    const VALIDATION_CONFIG = {
+      MAX_QUESTION_LENGTH: 1000,   // 최대 질문 길이
+      MIN_QUESTION_LENGTH: 2,      // 최소 질문 길이
+      MAX_COMMENT_LENGTH: 500      // 최대 코멘트 길이
     };
 
     // ==================== 전역 변수 ====================
@@ -973,8 +986,19 @@
     async function sendMessage() {
       const input = document.getElementById('userInput');
       const question = input.value.trim();
-      
+
+      // 입력 검증
       if (!question) return;
+
+      if (question.length < VALIDATION_CONFIG.MIN_QUESTION_LENGTH) {
+        alert(`질문은 최소 ${VALIDATION_CONFIG.MIN_QUESTION_LENGTH}자 이상이어야 합니다.`);
+        return;
+      }
+
+      if (question.length > VALIDATION_CONFIG.MAX_QUESTION_LENGTH) {
+        alert(`질문은 최대 ${VALIDATION_CONFIG.MAX_QUESTION_LENGTH}자까지 입력 가능합니다.\n현재: ${question.length}자`);
+        return;
+      }
       
       // 사용자 메시지 추가
       addMessage('user', question);
@@ -1037,6 +1061,25 @@
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
+      }
+    }
+
+    // 문자 수 카운터 업데이트
+    function updateCharCount() {
+      const input = document.getElementById('userInput');
+      const charCount = document.getElementById('charCount');
+      const length = input.value.length;
+      const maxLength = VALIDATION_CONFIG.MAX_QUESTION_LENGTH;
+
+      charCount.textContent = `${length}/${maxLength}`;
+
+      // 길이에 따라 색상 변경
+      if (length > maxLength * 0.9) {
+        charCount.style.color = '#ef4444'; // 빨강
+      } else if (length > maxLength * 0.7) {
+        charCount.style.color = '#f59e0b'; // 주황
+      } else {
+        charCount.style.color = '#9ca3af'; // 회색
       }
     }
 
@@ -1235,6 +1278,12 @@
 
       const comment = document.getElementById('feedbackComment').value.trim();
 
+      // 코멘트 길이 검증
+      if (comment.length > VALIDATION_CONFIG.MAX_COMMENT_LENGTH) {
+        alert(`의견은 최대 ${VALIDATION_CONFIG.MAX_COMMENT_LENGTH}자까지 입력 가능합니다.\n현재: ${comment.length}자`);
+        return;
+      }
+
       try {
         // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
@@ -1280,9 +1329,26 @@
       const email = document.getElementById('escalationEmail').value.trim();
       const phone = document.getElementById('escalationPhone').value.trim();
 
+      // 이메일 검증
       if (!email) {
         alert('이메일을 입력해주세요.');
         return;
+      }
+
+      // 이메일 형식 검증
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        alert('올바른 이메일 주소를 입력해주세요.');
+        return;
+      }
+
+      // 전화번호 검증 (선택사항이므로 입력된 경우만)
+      if (phone) {
+        const phoneRegex = /^01[0-9]-?\d{3,4}-?\d{4}$/;
+        if (!phoneRegex.test(phone)) {
+          alert('올바른 전화번호를 입력해주세요.\n예: 010-1234-5678');
+          return;
+        }
       }
 
       try {

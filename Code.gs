@@ -30,7 +30,8 @@ const CONFIG = {
   DEFAULT_ESCALATION_EMAIL: 'support@university.ac.kr',
 
   // 로그 설정
-  LOG_TEXT_MAX_LENGTH: 50
+  LOG_TEXT_MAX_LENGTH: 50,
+  DEBUG_MODE: false  // true로 설정하면 상세 로그 출력
 };
 
 // ==================== 설정 ====================
@@ -48,6 +49,23 @@ function getConfig() {
       'QA이력': props.getProperty('FOLDER_QA이력')
     }
   };
+}
+
+// 디버그 로그 함수 (DEBUG_MODE가 true일 때만 로그 출력)
+function debugLog(message) {
+  if (CONFIG.DEBUG_MODE) {
+    Logger.log('[DEBUG] ' + message);
+  }
+}
+
+// 정보 로그 함수 (항상 출력)
+function infoLog(message) {
+  Logger.log('[INFO] ' + message);
+}
+
+// 오류 로그 함수 (항상 출력)
+function errorLog(message) {
+  Logger.log('[ERROR] ' + message);
 }
 
 // ==================== GET 요청 핸들러 ====================
@@ -615,7 +633,14 @@ function checkSensitiveInfo(text) {
     { regex: /\b\d{10,14}\b/, name: '계좌번호 (의심)' },
 
     // 여권번호 (M 또는 S로 시작하는 8-9자리)
-    { regex: /\b[MS]\d{8}\b/, name: '여권번호' }
+    { regex: /\b[MS]\d{8}\b/, name: '여권번호' },
+
+    // 이메일 주소 (단, 담당자 연결 시에는 필요하므로 컨텍스트 고려 필요)
+    // 일반 질문에서는 차단하지만, 에스컬레이션에서는 허용
+    // { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, name: '이메일 주소' },
+
+    // 학번/사번 (8-10자리 숫자, 단 전화번호와 중복 가능하므로 주의)
+    { regex: /\b(20\d{6}|19\d{6})\b/, name: '학번/사번 (의심)' }
   ];
 
   for (const pattern of patterns) {
