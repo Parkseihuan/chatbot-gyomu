@@ -1279,63 +1279,144 @@
     }
 
     // ==================== 유틸리티 ====================
-    
-    // 마크다운을 HTML로 변환
-    function parseMarkdown(text) {
-      if (!text) return '';
-      
-      let html = text;
-      
-      // 코드 블록 (```)
-      html = html.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
-      
-      // 인라인 코드 (`)
-      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-      
-      // 볼드 (**)
-      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-      
-      // 이탤릭 (*)
-      html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      
-      // 헤더 (###, ##, #)
-      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-      
-      // 번호 리스트
-      html = html.replace(/^\d+\.\s+(.+)$/gm, '<li class="numbered">$1</li>');
-      
-      // 일반 리스트 (-, *)
-      html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
-      
-      // li 태그를 ul로 감싸기
-      html = html.replace(/(<li(?:\s+class="numbered")?>[\s\S]+?<\/li>)(?!\s*<li)/g, function(match) {
-        if (match.includes('class="numbered"')) {
-          return '<ol>' + match + '</ol>';
-        }
-        return '<ul>' + match + '</ul>';
-      });
-      
-      // 링크 [텍스트](URL)
-      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-      
-      // 줄바꿈
-      html = html.replace(/\n\n/g, '</p><p>');
-      html = html.replace(/\n/g, '<br>');
-      
-      // 단락으로 감싸기
-      if (!html.startsWith('<')) {
-        html = '<p>' + html + '</p>';
-      }
-      
-      return html;
-    }
-    
+
+    // HTML 이스케이프 (XSS 방지)
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // 마크다운을 HTML로 변환 (보안 강화 버전)
+    function parseMarkdown(text) {
+      if (!text) return '';
+
+      // 1. 코드 블록과 인라인 코드를 먼저 추출하여 보호
+      const codeBlocks = [];
+      const inlineCodes = [];
+
+      // 코드 블록 임시 저장 및 플레이스홀더 삽입
+      let html = text.replace(/```([\s\S]*?)```/g, function(match, code) {
+        const index = codeBlocks.length;
+        codeBlocks.push(escapeHtml(code.trim()));
+        return `___CODEBLOCK_${index}___`;
+      });
+
+      // 인라인 코드 임시 저장 및 플레이스홀더 삽입
+      html = html.replace(/`([^`]+)`/g, function(match, code) {
+        const index = inlineCodes.length;
+        inlineCodes.push(escapeHtml(code));
+        return `___INLINECODE_${index}___`;
+      });
+
+      // 2. 나머지 텍스트 HTML 이스케이프 (XSS 방지)
+      html = html.split('\n').map(line => {
+        // 플레이스홀더가 있는 라인은 보존
+        if (line.includes('___CODEBLOCK_') || line.includes('___INLINECODE_')) {
+          return line;
+        }
+        return escapeHtml(line);
+      }).join('\n');
+
+      // 3. 마크다운 변환
+
+      // 헤더 (###, ##, #) - 순서 중요!
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+      // 볼드 (**) - 이스케이프된 * 복원 후 처리
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+      // 이탤릭 (*)
+      html = html.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
+
+      // 링크 [텍스트](URL) - URL은 검증 필요
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
+        // URL 검증 (http, https만 허용)
+        if (url.match(/^https?:\/\//i)) {
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+        }
+        return text; // 유효하지 않은 URL은 텍스트만 표시
+      });
+
+      // 번호 리스트 (1. 2. 3.)
+      html = html.replace(/^\d+\.\s+(.+)$/gm, '<li data-type="numbered">$1</li>');
+
+      // 일반 리스트 (-, *)
+      html = html.replace(/^[-•]\s+(.+)$/gm, '<li data-type="bullet">$1</li>');
+
+      // 4. 연속된 li 항목을 ul/ol로 그룹화
+      const lines = html.split('\n');
+      const result = [];
+      let inList = false;
+      let listType = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const isNumberedItem = line.includes('<li data-type="numbered">');
+        const isBulletItem = line.includes('<li data-type="bullet">');
+
+        if (isNumberedItem || isBulletItem) {
+          const currentType = isNumberedItem ? 'numbered' : 'bullet';
+
+          // 리스트 시작 또는 타입 변경
+          if (!inList) {
+            result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
+            inList = true;
+            listType = currentType;
+          } else if (listType !== currentType) {
+            // 리스트 타입이 변경되면 이전 리스트 닫고 새로 시작
+            result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+            result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
+            listType = currentType;
+          }
+
+          // data-type 속성 제거하고 li만 추가
+          result.push(line.replace(' data-type="numbered"', '').replace(' data-type="bullet"', ''));
+
+        } else {
+          // 리스트가 아닌 라인
+          if (inList) {
+            result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+            inList = false;
+            listType = null;
+          }
+          result.push(line);
+        }
+      }
+
+      // 마지막 리스트 닫기
+      if (inList) {
+        result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+      }
+
+      html = result.join('\n');
+
+      // 5. 코드 블록 복원
+      html = html.replace(/___CODEBLOCK_(\d+)___/g, function(match, index) {
+        return `<pre><code>${codeBlocks[index]}</code></pre>`;
+      });
+
+      // 6. 인라인 코드 복원
+      html = html.replace(/___INLINECODE_(\d+)___/g, function(match, index) {
+        return `<code>${inlineCodes[index]}</code>`;
+      });
+
+      // 7. 줄바꿈 처리
+      html = html.replace(/\n\n+/g, '</p><p>');
+      html = html.replace(/\n/g, '<br>');
+
+      // 8. 단락으로 감싸기 (태그로 시작하지 않는 경우)
+      if (!html.trim().startsWith('<')) {
+        html = '<p>' + html + '</p>';
+      }
+
+      // 9. 빈 단락 제거
+      html = html.replace(/<p><\/p>/g, '');
+      html = html.replace(/<p>\s*<br>\s*<\/p>/g, '');
+
+      return html;
     }
 
     // 모달 외부 클릭 시 닫기

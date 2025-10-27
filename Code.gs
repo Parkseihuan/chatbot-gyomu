@@ -577,9 +577,20 @@ function handleEscalation(params) {
 // ==================== 민감정보 필터링 ====================
 function checkSensitiveInfo(text) {
   const patterns = [
+    // 주민등록번호 (6자리-7자리 또는 13자리 연속)
     { regex: /\d{6}[- ]?\d{7}/, name: '주민등록번호' },
+
+    // 신용카드번호 (4자리씩 4그룹)
     { regex: /\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}/, name: '카드번호' },
-    { regex: /\d{3}[- ]?\d{4}[- ]?\d{4}/, name: '전화번호 (부분)' }
+
+    // 한국 휴대폰 번호 (010, 011, 016, 017, 018, 019로 시작)
+    { regex: /\b01[0-9][- ]?\d{3,4}[- ]?\d{4}\b/, name: '휴대폰번호' },
+
+    // 계좌번호 (10자리 이상 연속 숫자)
+    { regex: /\b\d{10,14}\b/, name: '계좌번호 (의심)' },
+
+    // 여권번호 (M 또는 S로 시작하는 8-9자리)
+    { regex: /\b[MS]\d{8}\b/, name: '여권번호' }
   ];
 
   for (const pattern of patterns) {
