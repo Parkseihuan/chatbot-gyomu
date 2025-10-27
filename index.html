@@ -427,6 +427,7 @@
     .input-wrapper {
       flex: 1;
       position: relative;
+      padding-bottom: 20px;
     }
 
     #userInput {
@@ -695,7 +696,12 @@
                 id="userInput"
                 placeholder="질문을 입력하세요... (Enter로 전송, Shift+Enter로 줄바꿈)"
                 onkeypress="handleKeyPress(event)"
+                oninput="updateCharCount()"
+                maxlength="1000"
               ></textarea>
+              <div id="charCount" style="position: absolute; bottom: 5px; right: 10px; font-size: 11px; color: #9ca3af;">
+                0/1000
+              </div>
             </div>
             <button id="sendBtn" onclick="sendMessage()">
               전송
@@ -748,9 +754,25 @@
   </div>
 
   <script>
-    // ==================== 설정 ====================
+    // ==================== 설정 및 상수 ====================
     // ⚠️ 배포된 Apps Script URL을 여기에 입력하세요!
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzle0C6ZDUyKif7t-PO_vE3vViRj7l6It3Mi9_njIBFVnCYm1t1w-qHWCeVesXB_QJrcA/exec';  // 예: https://script.google.com/macros/s/AKfycby.../exec
+
+    // API 설정
+    const API_CONFIG = {
+      TIMEOUT_MS: 30000,           // 30초 타임아웃
+      MAX_RETRIES: 3,              // 최대 재시도 횟수
+      RETRY_DELAY_MS: 1000,        // 초기 재시도 대기 시간 (1초)
+      FAQ_LIMIT: 5,                // FAQ 표시 개수
+      BUTTON_FEEDBACK_DELAY_MS: 1000  // 버튼 피드백 표시 시간
+    };
+
+    // 입력 검증 설정
+    const VALIDATION_CONFIG = {
+      MAX_QUESTION_LENGTH: 1000,   // 최대 질문 길이
+      MIN_QUESTION_LENGTH: 2,      // 최소 질문 길이
+      MAX_COMMENT_LENGTH: 500      // 최대 코멘트 길이
+    };
 
     // ==================== 전역 변수 ====================
     const sessionId = generateSessionId();
@@ -765,6 +787,78 @@
 
     function generateMessageId() {
       return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // 타임아웃 기능이 있는 fetch
+    async function fetchWithTimeout(url, options = {}, timeout = API_CONFIG.TIMEOUT_MS) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new Error('요청 시간 초과 (30초)');
+        }
+        throw error;
+      }
+    }
+
+    // 재시도 로직이 있는 fetch (exponential backoff)
+    async function fetchWithRetry(url, options = {}, maxRetries = API_CONFIG.MAX_RETRIES) {
+      let lastError;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`API 요청 시도 ${attempt + 1}/${maxRetries + 1}`);
+          const response = await fetchWithTimeout(url, options);
+
+          // 성공하면 즉시 반환
+          if (response.ok) {
+            return response;
+          }
+
+          // 4xx 에러는 재시도하지 않음 (클라이언트 오류)
+          if (response.status >= 400 && response.status < 500) {
+            return response;
+          }
+
+          // 5xx 에러는 재시도
+          lastError = new Error(`서버 오류: ${response.status}`);
+
+        } catch (error) {
+          lastError = error;
+
+          // 마지막 시도가 아니면 대기 후 재시도
+          if (attempt < maxRetries) {
+            const delay = API_CONFIG.RETRY_DELAY_MS * Math.pow(2, attempt);
+            console.log(`${delay}ms 후 재시도...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+      }
+
+      // 모든 재시도 실패
+      throw lastError || new Error('알 수 없는 네트워크 오류');
+    }
+
+    // 버튼 피드백 표시 (중복 코드 제거)
+    function showButtonFeedback(button, feedbackText, originalText) {
+      button.innerHTML = feedbackText;
+      button.disabled = true;
+      button.style.opacity = '0.6';
+
+      setTimeout(() => {
+        button.innerHTML = originalText;
+        button.disabled = false;
+        button.style.opacity = '1';
+      }, API_CONFIG.BUTTON_FEEDBACK_DELAY_MS);
     }
 
     // ==================== 페이지 로드 ====================
@@ -785,23 +879,23 @@
     // ==================== FAQ 로딩 (GET 방식) ====================
     async function loadFAQ() {
       const faqList = document.getElementById('faqList');
-      
+
       try {
         console.log('FAQ 로딩 시작...');
         console.log('SCRIPT_URL:', SCRIPT_URL);
-        
-        // ⭐ GET 방식으로 변경 (preflight 회피)
-        const url = `${SCRIPT_URL}?action=getFAQ&limit=5`;
-        
-        const response = await fetch(url, {
+
+        // ⭐ GET 방식으로 변경 (preflight 회피) + 재시도 로직
+        const url = `${SCRIPT_URL}?action=getFAQ&limit=${API_CONFIG.FAQ_LIMIT}`;
+
+        const response = await fetchWithRetry(url, {
           method: 'GET',
           mode: 'cors',
           cache: 'no-cache'
         });
-        
+
         console.log('Response status:', response.status);
         console.log('Response ok:', response.ok);
-        
+
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
@@ -892,8 +986,19 @@
     async function sendMessage() {
       const input = document.getElementById('userInput');
       const question = input.value.trim();
-      
+
+      // 입력 검증
       if (!question) return;
+
+      if (question.length < VALIDATION_CONFIG.MIN_QUESTION_LENGTH) {
+        alert(`질문은 최소 ${VALIDATION_CONFIG.MIN_QUESTION_LENGTH}자 이상이어야 합니다.`);
+        return;
+      }
+
+      if (question.length > VALIDATION_CONFIG.MAX_QUESTION_LENGTH) {
+        alert(`질문은 최대 ${VALIDATION_CONFIG.MAX_QUESTION_LENGTH}자까지 입력 가능합니다.\n현재: ${question.length}자`);
+        return;
+      }
       
       // 사용자 메시지 추가
       addMessage('user', question);
@@ -907,24 +1012,24 @@
       
       try {
         console.log('메시지 전송:', question);
-        
-        // ⭐ URLSearchParams 사용 (preflight 회피)
+
+        // ⭐ URLSearchParams 사용 (preflight 회피) + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'chat');
         formData.append('question', question);
         formData.append('sessionId', sessionId);
         formData.append('userRole', 'faculty');
-        
-        const response = await fetch(SCRIPT_URL, {
+
+        const response = await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,  // application/x-www-form-urlencoded
           mode: 'cors',
           cache: 'no-cache'
         });
-        
+
         // 타이핑 인디케이터 제거
         removeTypingIndicator(typingId);
-        
+
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
@@ -956,6 +1061,25 @@
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
+      }
+    }
+
+    // 문자 수 카운터 업데이트
+    function updateCharCount() {
+      const input = document.getElementById('userInput');
+      const charCount = document.getElementById('charCount');
+      const length = input.value.length;
+      const maxLength = VALIDATION_CONFIG.MAX_QUESTION_LENGTH;
+
+      charCount.textContent = `${length}/${maxLength}`;
+
+      // 길이에 따라 색상 변경
+      if (length > maxLength * 0.9) {
+        charCount.style.color = '#ef4444'; // 빨강
+      } else if (length > maxLength * 0.7) {
+        charCount.style.color = '#f59e0b'; // 주황
+      } else {
+        charCount.style.color = '#9ca3af'; // 회색
       }
     }
 
@@ -1062,67 +1186,28 @@
         const positiveBtn = messageDiv.querySelector('.feedback-btn.positive');
         const negativeBtn = messageDiv.querySelector('.feedback-btn.negative');
         const escalateBtn = messageDiv.querySelector('.feedback-btn.escalate');
-        
+
         if (positiveBtn) {
           positiveBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             giveFeedback(options.messageId, text, 'positive');
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
-        
+
         if (negativeBtn) {
           negativeBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             giveFeedback(options.messageId, text, 'negative');
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
-        
+
         if (escalateBtn) {
           escalateBtn.addEventListener('click', function(e) {
-            // 즉시 피드백
             const btn = e.currentTarget;
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '⏳ 처리 중...';
-            btn.disabled = true;
-            btn.style.opacity = '0.6';
-            
-            // 함수 실행
+            showButtonFeedback(btn, '⏳ 처리 중...', btn.innerHTML);
             requestEscalation(text);
-            
-            // 1초 후 복원
-            setTimeout(() => {
-              btn.innerHTML = originalText;
-              btn.disabled = false;
-              btn.style.opacity = '1';
-            }, 1000);
           });
         }
       }
@@ -1190,11 +1275,17 @@
 
     async function submitFeedback() {
       if (!pendingFeedback) return;
-      
+
       const comment = document.getElementById('feedbackComment').value.trim();
-      
+
+      // 코멘트 길이 검증
+      if (comment.length > VALIDATION_CONFIG.MAX_COMMENT_LENGTH) {
+        alert(`의견은 최대 ${VALIDATION_CONFIG.MAX_COMMENT_LENGTH}자까지 입력 가능합니다.\n현재: ${comment.length}자`);
+        return;
+      }
+
       try {
-        // ⭐ URLSearchParams 사용
+        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'feedback');
         formData.append('sessionId', sessionId);
@@ -1202,19 +1293,19 @@
         formData.append('feedback', pendingFeedback.feedback);
         formData.append('rating', currentRating);
         if (comment) formData.append('comment', comment);
-        
-        await fetch(SCRIPT_URL, {
+
+        await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,
           mode: 'cors'
         });
-        
+
         alert('피드백을 주셔서 감사합니다! 😊');
         closeFeedbackModal();
-        
+
       } catch (error) {
         console.error('피드백 전송 오류:', error);
-        alert('피드백 전송에 실패했습니다.');
+        alert('피드백 전송에 실패했습니다.\n\n오류: ' + error.message);
       }
     }
 
@@ -1234,42 +1325,59 @@
 
     async function submitEscalation() {
       if (!pendingEscalation) return;
-      
+
       const email = document.getElementById('escalationEmail').value.trim();
       const phone = document.getElementById('escalationPhone').value.trim();
-      
+
+      // 이메일 검증
       if (!email) {
         alert('이메일을 입력해주세요.');
         return;
       }
-      
+
+      // 이메일 형식 검증
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        alert('올바른 이메일 주소를 입력해주세요.');
+        return;
+      }
+
+      // 전화번호 검증 (선택사항이므로 입력된 경우만)
+      if (phone) {
+        const phoneRegex = /^01[0-9]-?\d{3,4}-?\d{4}$/;
+        if (!phoneRegex.test(phone)) {
+          alert('올바른 전화번호를 입력해주세요.\n예: 010-1234-5678');
+          return;
+        }
+      }
+
       try {
-        // ⭐ URLSearchParams 사용
+        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'escalate');
         formData.append('sessionId', sessionId);
         formData.append('question', pendingEscalation.question);
         formData.append('userEmail', email);
         if (phone) formData.append('userPhone', phone);
-        
-        const response = await fetch(SCRIPT_URL, {
+
+        const response = await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
           body: formData,
           mode: 'cors'
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
           alert('담당자 연결 요청이 완료되었습니다.\n곧 연락드리겠습니다. 😊');
           closeEscalationModal();
         } else {
           throw new Error(data.error || '알 수 없는 오류');
         }
-        
+
       } catch (error) {
         console.error('에스컬레이션 오류:', error);
-        alert('요청 전송에 실패했습니다.');
+        alert('요청 전송에 실패했습니다.\n\n오류: ' + error.message);
       }
     }
 
@@ -1279,63 +1387,144 @@
     }
 
     // ==================== 유틸리티 ====================
-    
-    // 마크다운을 HTML로 변환
-    function parseMarkdown(text) {
-      if (!text) return '';
-      
-      let html = text;
-      
-      // 코드 블록 (```)
-      html = html.replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>');
-      
-      // 인라인 코드 (`)
-      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-      
-      // 볼드 (**)
-      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-      
-      // 이탤릭 (*)
-      html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-      
-      // 헤더 (###, ##, #)
-      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-      
-      // 번호 리스트
-      html = html.replace(/^\d+\.\s+(.+)$/gm, '<li class="numbered">$1</li>');
-      
-      // 일반 리스트 (-, *)
-      html = html.replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>');
-      
-      // li 태그를 ul로 감싸기
-      html = html.replace(/(<li(?:\s+class="numbered")?>[\s\S]+?<\/li>)(?!\s*<li)/g, function(match) {
-        if (match.includes('class="numbered"')) {
-          return '<ol>' + match + '</ol>';
-        }
-        return '<ul>' + match + '</ul>';
-      });
-      
-      // 링크 [텍스트](URL)
-      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-      
-      // 줄바꿈
-      html = html.replace(/\n\n/g, '</p><p>');
-      html = html.replace(/\n/g, '<br>');
-      
-      // 단락으로 감싸기
-      if (!html.startsWith('<')) {
-        html = '<p>' + html + '</p>';
-      }
-      
-      return html;
-    }
-    
+
+    // HTML 이스케이프 (XSS 방지)
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    // 마크다운을 HTML로 변환 (보안 강화 버전)
+    function parseMarkdown(text) {
+      if (!text) return '';
+
+      // 1. 코드 블록과 인라인 코드를 먼저 추출하여 보호
+      const codeBlocks = [];
+      const inlineCodes = [];
+
+      // 코드 블록 임시 저장 및 플레이스홀더 삽입
+      let html = text.replace(/```([\s\S]*?)```/g, function(match, code) {
+        const index = codeBlocks.length;
+        codeBlocks.push(escapeHtml(code.trim()));
+        return `___CODEBLOCK_${index}___`;
+      });
+
+      // 인라인 코드 임시 저장 및 플레이스홀더 삽입
+      html = html.replace(/`([^`]+)`/g, function(match, code) {
+        const index = inlineCodes.length;
+        inlineCodes.push(escapeHtml(code));
+        return `___INLINECODE_${index}___`;
+      });
+
+      // 2. 나머지 텍스트 HTML 이스케이프 (XSS 방지)
+      html = html.split('\n').map(line => {
+        // 플레이스홀더가 있는 라인은 보존
+        if (line.includes('___CODEBLOCK_') || line.includes('___INLINECODE_')) {
+          return line;
+        }
+        return escapeHtml(line);
+      }).join('\n');
+
+      // 3. 마크다운 변환
+
+      // 헤더 (###, ##, #) - 순서 중요!
+      html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+      html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+      // 볼드 (**) - 이스케이프된 * 복원 후 처리
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+      // 이탤릭 (*)
+      html = html.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
+
+      // 링크 [텍스트](URL) - URL은 검증 필요
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
+        // URL 검증 (http, https만 허용)
+        if (url.match(/^https?:\/\//i)) {
+          return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+        }
+        return text; // 유효하지 않은 URL은 텍스트만 표시
+      });
+
+      // 번호 리스트 (1. 2. 3.)
+      html = html.replace(/^\d+\.\s+(.+)$/gm, '<li data-type="numbered">$1</li>');
+
+      // 일반 리스트 (-, *)
+      html = html.replace(/^[-•]\s+(.+)$/gm, '<li data-type="bullet">$1</li>');
+
+      // 4. 연속된 li 항목을 ul/ol로 그룹화
+      const lines = html.split('\n');
+      const result = [];
+      let inList = false;
+      let listType = null;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const isNumberedItem = line.includes('<li data-type="numbered">');
+        const isBulletItem = line.includes('<li data-type="bullet">');
+
+        if (isNumberedItem || isBulletItem) {
+          const currentType = isNumberedItem ? 'numbered' : 'bullet';
+
+          // 리스트 시작 또는 타입 변경
+          if (!inList) {
+            result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
+            inList = true;
+            listType = currentType;
+          } else if (listType !== currentType) {
+            // 리스트 타입이 변경되면 이전 리스트 닫고 새로 시작
+            result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+            result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
+            listType = currentType;
+          }
+
+          // data-type 속성 제거하고 li만 추가
+          result.push(line.replace(' data-type="numbered"', '').replace(' data-type="bullet"', ''));
+
+        } else {
+          // 리스트가 아닌 라인
+          if (inList) {
+            result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+            inList = false;
+            listType = null;
+          }
+          result.push(line);
+        }
+      }
+
+      // 마지막 리스트 닫기
+      if (inList) {
+        result.push(listType === 'numbered' ? '</ol>' : '</ul>');
+      }
+
+      html = result.join('\n');
+
+      // 5. 코드 블록 복원
+      html = html.replace(/___CODEBLOCK_(\d+)___/g, function(match, index) {
+        return `<pre><code>${codeBlocks[index]}</code></pre>`;
+      });
+
+      // 6. 인라인 코드 복원
+      html = html.replace(/___INLINECODE_(\d+)___/g, function(match, index) {
+        return `<code>${inlineCodes[index]}</code>`;
+      });
+
+      // 7. 줄바꿈 처리
+      html = html.replace(/\n\n+/g, '</p><p>');
+      html = html.replace(/\n/g, '<br>');
+
+      // 8. 단락으로 감싸기 (태그로 시작하지 않는 경우)
+      if (!html.trim().startsWith('<')) {
+        html = '<p>' + html + '</p>';
+      }
+
+      // 9. 빈 단락 제거
+      html = html.replace(/<p><\/p>/g, '');
+      html = html.replace(/<p>\s*<br>\s*<\/p>/g, '');
+
+      return html;
     }
 
     // 모달 외부 클릭 시 닫기

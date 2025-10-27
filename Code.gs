@@ -1,12 +1,38 @@
 /**
  * 용인대학교 교무지원과 AI 챗봇 - Apps Script (CORS 완전 해결)
- * v1.2 - GET/POST 방식으로 preflight 회피
+ * v1.3 - 코드 품질 개선, 재시도 로직, 상수 정의
  *
  * 주요 변경사항:
  * - doGet(): FAQ 등 조회용 (preflight 없음)
  * - doPost(): 채팅, 피드백 등 (application/x-www-form-urlencoded)
  * - doOptions() 제거 (불필요)
+ * - 상수 정의 및 매직 넘버 제거
+ * - 에러 처리 개선
  */
+
+// ==================== 상수 정의 ====================
+const CONFIG = {
+  // FAQ 설정
+  DEFAULT_FAQ_LIMIT: 5,
+  SAMPLE_FAQ_COUNT: 5,
+
+  // 문서 검색 설정
+  MAX_DOCUMENTS_PER_FOLDER: 3,
+  MAX_SEARCH_KEYWORDS: 10,
+
+  // Gemini API 설정
+  GEMINI_MODEL: 'gemini-2.5-pro',
+  GEMINI_TEMPERATURE: 0.7,
+  GEMINI_MAX_TOKENS: 1000,
+
+  // 기본 이메일
+  DEFAULT_ADMIN_EMAIL: 'admin@university.ac.kr',
+  DEFAULT_ESCALATION_EMAIL: 'support@university.ac.kr',
+
+  // 로그 설정
+  LOG_TEXT_MAX_LENGTH: 50,
+  DEBUG_MODE: false  // true로 설정하면 상세 로그 출력
+};
 
 // ==================== 설정 ====================
 function getConfig() {
@@ -14,8 +40,8 @@ function getConfig() {
   return {
     spreadsheetId: props.getProperty('SPREADSHEET_ID'),
     geminiApiKey: props.getProperty('GEMINI_API_KEY'),
-    adminEmail: props.getProperty('ADMIN_EMAIL') || 'admin@university.ac.kr',
-    escalationEmail: props.getProperty('ESCALATION_EMAIL') || 'support@university.ac.kr',
+    adminEmail: props.getProperty('ADMIN_EMAIL') || CONFIG.DEFAULT_ADMIN_EMAIL,
+    escalationEmail: props.getProperty('ESCALATION_EMAIL') || CONFIG.DEFAULT_ESCALATION_EMAIL,
     folders: {
       '규정집': props.getProperty('FOLDER_규정집'),
       '상위법': props.getProperty('FOLDER_상위법'),
@@ -23,6 +49,23 @@ function getConfig() {
       'QA이력': props.getProperty('FOLDER_QA이력')
     }
   };
+}
+
+// 디버그 로그 함수 (DEBUG_MODE가 true일 때만 로그 출력)
+function debugLog(message) {
+  if (CONFIG.DEBUG_MODE) {
+    Logger.log('[DEBUG] ' + message);
+  }
+}
+
+// 정보 로그 함수 (항상 출력)
+function infoLog(message) {
+  Logger.log('[INFO] ' + message);
+}
+
+// 오류 로그 함수 (항상 출력)
+function errorLog(message) {
+  Logger.log('[ERROR] ' + message);
 }
 
 // ==================== GET 요청 핸들러 ====================
@@ -137,7 +180,7 @@ function doPost(e) {
 }
 
 // ==================== FAQ 조회 ====================
-function getFAQ(limit = 5) {
+function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
   try {
     Logger.log('=== getFAQ 시작 ===');
     Logger.log('Limit: ' + limit);
@@ -207,7 +250,7 @@ function getFAQ(limit = 5) {
 }
 
 // 샘플 FAQ 데이터
-function getSampleFAQs(limit = 5) {
+function getSampleFAQs(limit = CONFIG.SAMPLE_FAQ_COUNT) {
   const allFaqs = [
     {
       question: '재임용 심사 기준은 무엇인가요?',
@@ -319,7 +362,7 @@ function searchDocuments(query, config) {
         );
 
         let count = 0;
-        while (files.hasNext() && count < 3) {
+        while (files.hasNext() && count < CONFIG.MAX_DOCUMENTS_PER_FOLDER) {
           const file = files.next();
           documents.push({
             filename: file.getName(),
@@ -393,7 +436,7 @@ ${context}
 
 답변:`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${config.geminiApiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
     const payload = {
       contents: [{
@@ -402,8 +445,8 @@ ${context}
         }]
       }],
       generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1000
+        temperature: CONFIG.GEMINI_TEMPERATURE,
+        maxOutputTokens: CONFIG.GEMINI_MAX_TOKENS
       }
     };
 
@@ -422,24 +465,58 @@ ${context}
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
 
-    Logger.log('응답 코드: ' + responseCode);
-    Logger.log('응답 길이: ' + responseText.length);
+    infoLog('응답 코드: ' + responseCode);
+    infoLog('응답 길이: ' + responseText.length);
 
     if (responseCode !== 200) {
-      Logger.log('❌ API 오류 응답: ' + responseText);
+      errorLog('API 오류 응답: ' + responseText);
       throw new Error('Gemini API returned ' + responseCode + ': ' + responseText.substring(0, 200));
     }
 
     const result = JSON.parse(responseText);
 
+    // 디버그: 전체 응답 구조 로깅
+    debugLog('전체 응답: ' + JSON.stringify(result));
+    infoLog('응답 구조: candidates=' + (result.candidates ? '존재' : '없음') +
+            ', promptFeedback=' + (result.promptFeedback ? '존재' : '없음'));
+
+    // 에러 체크
     if (result.error) {
-      Logger.log('❌ API 오류: ' + JSON.stringify(result.error));
+      errorLog('API 오류: ' + JSON.stringify(result.error));
       throw new Error('Gemini API error: ' + result.error.message);
     }
 
-    if (result.candidates && result.candidates[0]) {
-      const text = result.candidates[0].content.parts[0].text;
-      Logger.log('✅ Gemini 응답 길이: ' + text.length);
+    // promptFeedback이 있으면 차단된 것일 수 있음
+    if (result.promptFeedback && result.promptFeedback.blockReason) {
+      errorLog('프롬프트 차단됨: ' + result.promptFeedback.blockReason);
+      throw new Error('프롬프트가 차단되었습니다: ' + result.promptFeedback.blockReason);
+    }
+
+    // candidates 체크 및 안전한 접근
+    if (result.candidates && Array.isArray(result.candidates) && result.candidates.length > 0) {
+      const candidate = result.candidates[0];
+
+      // content 체크
+      if (!candidate.content) {
+        errorLog('candidate에 content가 없음: ' + JSON.stringify(candidate));
+        throw new Error('응답에 content가 없습니다. finishReason: ' + (candidate.finishReason || 'unknown'));
+      }
+
+      // parts 체크
+      if (!candidate.content.parts || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
+        errorLog('content에 parts가 없음: ' + JSON.stringify(candidate.content));
+        throw new Error('응답에 parts가 없습니다');
+      }
+
+      // text 추출
+      const text = candidate.content.parts[0].text;
+
+      if (!text) {
+        errorLog('parts[0]에 text가 없음: ' + JSON.stringify(candidate.content.parts[0]));
+        throw new Error('응답에 텍스트가 없습니다');
+      }
+
+      infoLog('✅ Gemini 응답 성공 (길이: ' + text.length + ')');
       return {
         text: text,
         sources: documents,
@@ -447,8 +524,9 @@ ${context}
       };
     }
 
-    Logger.log('⚠️ 예상치 못한 응답 형식: ' + JSON.stringify(result).substring(0, 200));
-    throw new Error('Gemini 응답 형식 오류');
+    // 예상치 못한 응답 형식
+    errorLog('예상치 못한 응답 형식: ' + JSON.stringify(result));
+    throw new Error('Gemini 응답 형식 오류: candidates가 없거나 비어있음');
 
   } catch (error) {
     Logger.log('❌ Gemini API 오류: ' + error.toString());
@@ -577,9 +655,27 @@ function handleEscalation(params) {
 // ==================== 민감정보 필터링 ====================
 function checkSensitiveInfo(text) {
   const patterns = [
+    // 주민등록번호 (6자리-7자리 또는 13자리 연속)
     { regex: /\d{6}[- ]?\d{7}/, name: '주민등록번호' },
+
+    // 신용카드번호 (4자리씩 4그룹)
     { regex: /\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}/, name: '카드번호' },
-    { regex: /\d{3}[- ]?\d{4}[- ]?\d{4}/, name: '전화번호 (부분)' }
+
+    // 한국 휴대폰 번호 (010, 011, 016, 017, 018, 019로 시작)
+    { regex: /\b01[0-9][- ]?\d{3,4}[- ]?\d{4}\b/, name: '휴대폰번호' },
+
+    // 계좌번호 (10자리 이상 연속 숫자)
+    { regex: /\b\d{10,14}\b/, name: '계좌번호 (의심)' },
+
+    // 여권번호 (M 또는 S로 시작하는 8-9자리)
+    { regex: /\b[MS]\d{8}\b/, name: '여권번호' },
+
+    // 이메일 주소 (단, 담당자 연결 시에는 필요하므로 컨텍스트 고려 필요)
+    // 일반 질문에서는 차단하지만, 에스컬레이션에서는 허용
+    // { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/, name: '이메일 주소' },
+
+    // 학번/사번 (8-10자리 숫자, 단 전화번호와 중복 가능하므로 주의)
+    { regex: /\b(20\d{6}|19\d{6})\b/, name: '학번/사번 (의심)' }
   ];
 
   for (const pattern of patterns) {
@@ -597,7 +693,7 @@ function checkSensitiveInfo(text) {
               new Date(),
               pattern.name,
               '질문 차단',
-              text.substring(0, 50) + '...'
+              text.substring(0, CONFIG.LOG_TEXT_MAX_LENGTH) + '...'
             ]);
           }
         }
@@ -710,7 +806,7 @@ function testGeminiKey() {
 
   // 간단한 테스트 요청
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${config.geminiApiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
     const payload = {
       contents: [{
@@ -719,7 +815,7 @@ function testGeminiKey() {
         }]
       }],
       generationConfig: {
-        temperature: 0.7,
+        temperature: CONFIG.GEMINI_TEMPERATURE,
         maxOutputTokens: 100
       }
     };
@@ -731,21 +827,22 @@ function testGeminiKey() {
       muteHttpExceptions: true
     };
 
-    Logger.log('API 요청 전송 중...');
+    infoLog('API 요청 전송 중...');
     const response = UrlFetchApp.fetch(url, options);
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
 
-    Logger.log('응답 코드: ' + responseCode);
+    infoLog('응답 코드: ' + responseCode);
+    infoLog('응답 길이: ' + responseText.length);
 
     if (responseCode !== 200) {
-      Logger.log('❌ API 오류 응답: ' + responseText);
+      errorLog('API 오류 응답: ' + responseText);
 
       try {
         const errorData = JSON.parse(responseText);
         if (errorData.error) {
-          Logger.log('오류 메시지: ' + errorData.error.message);
-          Logger.log('오류 상태: ' + errorData.error.status);
+          errorLog('오류 메시지: ' + errorData.error.message);
+          errorLog('오류 상태: ' + errorData.error.status);
         }
       } catch (e) {
         // JSON 파싱 실패
@@ -756,18 +853,38 @@ function testGeminiKey() {
 
     const result = JSON.parse(responseText);
 
+    // 디버그: 전체 응답 로깅
+    debugLog('전체 응답: ' + JSON.stringify(result));
+    infoLog('응답 구조: candidates=' + (result.candidates ? '존재' : '없음') +
+            ', promptFeedback=' + (result.promptFeedback ? '존재' : '없음'));
+
     if (result.error) {
-      Logger.log('❌ API 오류: ' + result.error.message);
+      errorLog('API 오류: ' + result.error.message);
       return;
     }
 
-    if (result.candidates && result.candidates[0]) {
-      const text = result.candidates[0].content.parts[0].text;
-      Logger.log('✅ API 정상 작동!');
-      Logger.log('테스트 응답: ' + text);
+    // promptFeedback 체크
+    if (result.promptFeedback && result.promptFeedback.blockReason) {
+      errorLog('프롬프트 차단됨: ' + result.promptFeedback.blockReason);
+      errorLog('전체 promptFeedback: ' + JSON.stringify(result.promptFeedback));
+      return;
+    }
+
+    // candidates 안전 체크
+    if (result.candidates && Array.isArray(result.candidates) && result.candidates.length > 0) {
+      const candidate = result.candidates[0];
+
+      if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+        errorLog('응답 형식 오류: ' + JSON.stringify(candidate));
+        return;
+      }
+
+      const text = candidate.content.parts[0].text;
+      infoLog('✅ API 정상 작동!');
+      infoLog('테스트 응답: ' + text);
     } else {
-      Logger.log('⚠️ 예상치 못한 응답 형식');
-      Logger.log('응답: ' + responseText.substring(0, 200));
+      errorLog('예상치 못한 응답 형식');
+      errorLog('전체 응답: ' + responseText);
     }
 
   } catch (error) {
