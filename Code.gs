@@ -465,24 +465,58 @@ ${context}
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
 
-    Logger.log('응답 코드: ' + responseCode);
-    Logger.log('응답 길이: ' + responseText.length);
+    infoLog('응답 코드: ' + responseCode);
+    infoLog('응답 길이: ' + responseText.length);
 
     if (responseCode !== 200) {
-      Logger.log('❌ API 오류 응답: ' + responseText);
+      errorLog('API 오류 응답: ' + responseText);
       throw new Error('Gemini API returned ' + responseCode + ': ' + responseText.substring(0, 200));
     }
 
     const result = JSON.parse(responseText);
 
+    // 디버그: 전체 응답 구조 로깅
+    debugLog('전체 응답: ' + JSON.stringify(result));
+    infoLog('응답 구조: candidates=' + (result.candidates ? '존재' : '없음') +
+            ', promptFeedback=' + (result.promptFeedback ? '존재' : '없음'));
+
+    // 에러 체크
     if (result.error) {
-      Logger.log('❌ API 오류: ' + JSON.stringify(result.error));
+      errorLog('API 오류: ' + JSON.stringify(result.error));
       throw new Error('Gemini API error: ' + result.error.message);
     }
 
-    if (result.candidates && result.candidates[0]) {
-      const text = result.candidates[0].content.parts[0].text;
-      Logger.log('✅ Gemini 응답 길이: ' + text.length);
+    // promptFeedback이 있으면 차단된 것일 수 있음
+    if (result.promptFeedback && result.promptFeedback.blockReason) {
+      errorLog('프롬프트 차단됨: ' + result.promptFeedback.blockReason);
+      throw new Error('프롬프트가 차단되었습니다: ' + result.promptFeedback.blockReason);
+    }
+
+    // candidates 체크 및 안전한 접근
+    if (result.candidates && Array.isArray(result.candidates) && result.candidates.length > 0) {
+      const candidate = result.candidates[0];
+
+      // content 체크
+      if (!candidate.content) {
+        errorLog('candidate에 content가 없음: ' + JSON.stringify(candidate));
+        throw new Error('응답에 content가 없습니다. finishReason: ' + (candidate.finishReason || 'unknown'));
+      }
+
+      // parts 체크
+      if (!candidate.content.parts || !Array.isArray(candidate.content.parts) || candidate.content.parts.length === 0) {
+        errorLog('content에 parts가 없음: ' + JSON.stringify(candidate.content));
+        throw new Error('응답에 parts가 없습니다');
+      }
+
+      // text 추출
+      const text = candidate.content.parts[0].text;
+
+      if (!text) {
+        errorLog('parts[0]에 text가 없음: ' + JSON.stringify(candidate.content.parts[0]));
+        throw new Error('응답에 텍스트가 없습니다');
+      }
+
+      infoLog('✅ Gemini 응답 성공 (길이: ' + text.length + ')');
       return {
         text: text,
         sources: documents,
@@ -490,8 +524,9 @@ ${context}
       };
     }
 
-    Logger.log('⚠️ 예상치 못한 응답 형식: ' + JSON.stringify(result).substring(0, 200));
-    throw new Error('Gemini 응답 형식 오류');
+    // 예상치 못한 응답 형식
+    errorLog('예상치 못한 응답 형식: ' + JSON.stringify(result));
+    throw new Error('Gemini 응답 형식 오류: candidates가 없거나 비어있음');
 
   } catch (error) {
     Logger.log('❌ Gemini API 오류: ' + error.toString());
@@ -792,21 +827,22 @@ function testGeminiKey() {
       muteHttpExceptions: true
     };
 
-    Logger.log('API 요청 전송 중...');
+    infoLog('API 요청 전송 중...');
     const response = UrlFetchApp.fetch(url, options);
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
 
-    Logger.log('응답 코드: ' + responseCode);
+    infoLog('응답 코드: ' + responseCode);
+    infoLog('응답 길이: ' + responseText.length);
 
     if (responseCode !== 200) {
-      Logger.log('❌ API 오류 응답: ' + responseText);
+      errorLog('API 오류 응답: ' + responseText);
 
       try {
         const errorData = JSON.parse(responseText);
         if (errorData.error) {
-          Logger.log('오류 메시지: ' + errorData.error.message);
-          Logger.log('오류 상태: ' + errorData.error.status);
+          errorLog('오류 메시지: ' + errorData.error.message);
+          errorLog('오류 상태: ' + errorData.error.status);
         }
       } catch (e) {
         // JSON 파싱 실패
@@ -817,18 +853,38 @@ function testGeminiKey() {
 
     const result = JSON.parse(responseText);
 
+    // 디버그: 전체 응답 로깅
+    debugLog('전체 응답: ' + JSON.stringify(result));
+    infoLog('응답 구조: candidates=' + (result.candidates ? '존재' : '없음') +
+            ', promptFeedback=' + (result.promptFeedback ? '존재' : '없음'));
+
     if (result.error) {
-      Logger.log('❌ API 오류: ' + result.error.message);
+      errorLog('API 오류: ' + result.error.message);
       return;
     }
 
-    if (result.candidates && result.candidates[0]) {
-      const text = result.candidates[0].content.parts[0].text;
-      Logger.log('✅ API 정상 작동!');
-      Logger.log('테스트 응답: ' + text);
+    // promptFeedback 체크
+    if (result.promptFeedback && result.promptFeedback.blockReason) {
+      errorLog('프롬프트 차단됨: ' + result.promptFeedback.blockReason);
+      errorLog('전체 promptFeedback: ' + JSON.stringify(result.promptFeedback));
+      return;
+    }
+
+    // candidates 안전 체크
+    if (result.candidates && Array.isArray(result.candidates) && result.candidates.length > 0) {
+      const candidate = result.candidates[0];
+
+      if (!candidate.content || !candidate.content.parts || candidate.content.parts.length === 0) {
+        errorLog('응답 형식 오류: ' + JSON.stringify(candidate));
+        return;
+      }
+
+      const text = candidate.content.parts[0].text;
+      infoLog('✅ API 정상 작동!');
+      infoLog('테스트 응답: ' + text);
     } else {
-      Logger.log('⚠️ 예상치 못한 응답 형식');
-      Logger.log('응답: ' + responseText.substring(0, 200));
+      errorLog('예상치 못한 응답 형식');
+      errorLog('전체 응답: ' + responseText);
     }
 
   } catch (error) {
