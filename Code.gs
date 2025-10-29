@@ -23,7 +23,7 @@ const CONFIG = {
   // Gemini API 설정
   GEMINI_MODEL: 'gemini-2.5-pro',
   GEMINI_TEMPERATURE: 0.7,
-  GEMINI_MAX_TOKENS: 1000,
+  GEMINI_MAX_TOKENS: 8000,  // 1000 → 8000 (gemini-2.5-pro의 thinking 토큰 고려)
 
   // 기본 이메일
   DEFAULT_ADMIN_EMAIL: 'admin@university.ac.kr',
