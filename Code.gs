@@ -19,6 +19,7 @@ const CONFIG = {
   // 문서 검색 설정
   MAX_DOCUMENTS_PER_FOLDER: 3,
   MAX_SEARCH_KEYWORDS: 10,
+  MAX_DOCUMENT_CONTENT_LENGTH: 5000,  // 문서 내용 최대 길이 (토큰 제한 고려)
 
   // Gemini API 설정
   GEMINI_MODEL: 'gemini-2.5-flash',  // fast and efficient
@@ -364,11 +365,16 @@ function searchDocuments(query, config) {
         let count = 0;
         while (files.hasNext() && count < CONFIG.MAX_DOCUMENTS_PER_FOLDER) {
           const file = files.next();
+
+          // 문서 내용 읽기
+          const content = readDocumentContent(file);
+
           documents.push({
             filename: file.getName(),
             category: category,
             url: file.getUrl(),
-            id: file.getId()
+            id: file.getId(),
+            content: content  // 실제 문서 내용 추가!
           });
           count++;
         }
@@ -401,6 +407,66 @@ function extractKeywords(text) {
   return keywords.length > 0 ? keywords : ['일반'];
 }
 
+// ==================== 문서 내용 읽기 ====================
+function readDocumentContent(file) {
+  try {
+    const mimeType = file.getMimeType();
+    const fileId = file.getId();
+    let content = '';
+
+    infoLog('문서 읽기 시작: ' + file.getName() + ' (' + mimeType + ')');
+
+    // Google Docs
+    if (mimeType === MimeType.GOOGLE_DOCS) {
+      const doc = DocumentApp.openById(fileId);
+      content = doc.getBody().getText();
+      infoLog('Google Docs 내용 읽기 성공: ' + content.length + '자');
+    }
+    // Google Sheets
+    else if (mimeType === MimeType.GOOGLE_SHEETS) {
+      const sheet = SpreadsheetApp.openById(fileId);
+      const sheets = sheet.getSheets();
+
+      // 첫 번째 시트만 읽기
+      if (sheets.length > 0) {
+        const data = sheets[0].getDataRange().getValues();
+        content = data.map(row => row.join('\t')).join('\n');
+        infoLog('Google Sheets 내용 읽기 성공: ' + content.length + '자');
+      }
+    }
+    // PDF
+    else if (mimeType === MimeType.PDF) {
+      // PDF는 OCR 없이 텍스트 추출 불가능
+      // Drive API로 export는 가능하지만 복잡함
+      content = '[PDF 파일 - 직접 확인 필요: ' + file.getUrl() + ']';
+      infoLog('PDF 파일: 내용 추출 불가');
+    }
+    // 일반 텍스트
+    else if (mimeType === MimeType.PLAIN_TEXT) {
+      const blob = file.getBlob();
+      content = blob.getDataAsString();
+      infoLog('텍스트 파일 읽기 성공: ' + content.length + '자');
+    }
+    // 지원하지 않는 형식
+    else {
+      content = '[지원하지 않는 파일 형식: ' + mimeType + ']';
+      infoLog('지원하지 않는 파일 형식: ' + mimeType);
+    }
+
+    // 내용이 너무 길면 자르기 (토큰 제한 고려)
+    if (content.length > CONFIG.MAX_DOCUMENT_CONTENT_LENGTH) {
+      content = content.substring(0, CONFIG.MAX_DOCUMENT_CONTENT_LENGTH) + '\n...(내용 생략)...';
+      infoLog('내용이 길어서 ' + CONFIG.MAX_DOCUMENT_CONTENT_LENGTH + '자로 제한');
+    }
+
+    return content;
+
+  } catch (error) {
+    errorLog('문서 읽기 오류: ' + error.toString());
+    return '[문서 읽기 오류: ' + error.message + ']';
+  }
+}
+
 // ==================== Gemini 답변 생성 ====================
 function generateAnswer(question, documents, config) {
   try {
@@ -413,13 +479,25 @@ function generateAnswer(question, documents, config) {
       };
     }
 
-    // 문서 컨텍스트 구성
+    // 문서 컨텍스트 구성 (실제 내용 포함!)
     let context = '';
     if (documents.length > 0) {
-      context = '\n\n참고 문서:\n';
+      context = '\n\n=== 참고 자료 ===\n';
+      context += '다음 문서들을 참고하여 답변해주세요. 문서에 명시된 내용을 우선적으로 사용하세요.\n\n';
+
       documents.forEach((doc, i) => {
-        context += `${i + 1}. [${doc.category}] ${doc.filename}\n`;
+        context += `--- 문서 ${i + 1}: [${doc.category}] ${doc.filename} ---\n`;
+
+        if (doc.content) {
+          context += doc.content + '\n';
+        } else {
+          context += '[내용 없음]\n';
+        }
+
+        context += '\n';
       });
+
+      context += '=== 참고 자료 끝 ===\n\n';
     }
 
     // Gemini API 호출
@@ -429,10 +507,11 @@ function generateAnswer(question, documents, config) {
 질문: ${question}
 ${context}
 
-답변은 다음 형식으로 작성해주세요:
-1. 명확하고 구체적인 답변
-2. 관련 규정이나 절차 안내
-3. 추가 문의가 필요한 경우 안내
+**중요 지침**:
+1. 위에 제공된 참고 자료의 내용을 우선적으로 사용하세요
+2. 참고 자료에 명시된 내용이 있다면 반드시 그것을 기반으로 답변하세요
+3. 참고 자료에 없는 내용은 추측하지 말고 "제공된 자료에는 해당 내용이 없습니다"라고 알려주세요
+4. 답변 시 관련 규정이나 근거를 명시해주세요
 
 답변:`;
 
