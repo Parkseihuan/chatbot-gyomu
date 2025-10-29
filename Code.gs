@@ -816,7 +816,7 @@ function testGeminiKey() {
       }],
       generationConfig: {
         temperature: CONFIG.GEMINI_TEMPERATURE,
-        maxOutputTokens: 100
+        maxOutputTokens: 500  // 100 → 500 (thinking 토큰 고려)
       }
     };
 
