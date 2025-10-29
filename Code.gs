@@ -1,13 +1,23 @@
 /**
- * 용인대학교 교무지원과 AI 챗봇 - Apps Script (CORS 완전 해결)
- * v1.3 - 코드 품질 개선, 재시도 로직, 상수 정의
+ * 용인대학교 교무지원과 AI 챗봇 - Apps Script
+ * v2.0 - 향상된 구조화된 로깅 및 분석 기능
  *
- * 주요 변경사항:
+ * 주요 변경사항 (v2.0):
+ * - 의도(intent) 자동 추출 및 분류 (재임용, 휴직, 연구년 등 30+ 패턴)
+ * - 엔티티 자동 추출 (기간, 날짜, 저널유형, 직급, 학과, 금액 등)
+ * - 향상된 신뢰도(confidence) 계산 (문서 기반, finishReason 고려)
+ * - QA_이력_상세 시트에 15개 컬럼 구조화된 로깅
+ * - 검색_문서_매핑 시트에 문서 사용 추적
+ * - 응답 시간 측정 및 기록
+ * - 사용자 이메일 및 역할 추적
+ * - 호환성: 기존 QA_이력 시트도 지원
+ *
+ * 이전 버전 (v1.3):
  * - doGet(): FAQ 등 조회용 (preflight 없음)
  * - doPost(): 채팅, 피드백 등 (application/x-www-form-urlencoded)
- * - doOptions() 제거 (불필요)
  * - 상수 정의 및 매직 넘버 제거
  * - 에러 처리 개선
+ * - 문서 내용 읽기 (RAG 구현)
  */
 
 // ==================== 상수 정의 ====================
@@ -285,14 +295,19 @@ function getSampleFAQs(limit = CONFIG.SAMPLE_FAQ_COUNT) {
 
 // ==================== 채팅 처리 ====================
 function handleChat(params) {
+  const startTime = new Date();
+
   try {
     const question = params.question || '';
     const sessionId = params.sessionId || '';
     const userRole = params.userRole || 'student';
+    const userEmail = params.userEmail || '';
 
     Logger.log('=== handleChat 시작 ===');
     Logger.log('Question: ' + question);
     Logger.log('SessionId: ' + sessionId);
+    Logger.log('UserEmail: ' + userEmail);
+    Logger.log('UserRole: ' + userRole);
 
     if (!question) {
       return {
@@ -313,28 +328,63 @@ function handleChat(params) {
 
     const config = getConfig();
 
-    // 1. 문서 검색
+    // 1. 의도 및 엔티티 추출
+    const intent = extractIntent(question);
+    const entities = extractEntities(question);
+    infoLog('추출된 의도: ' + intent);
+    infoLog('추출된 엔티티: ' + JSON.stringify(entities));
+
+    // 2. 문서 검색
     const documents = searchDocuments(question, config);
 
-    // 2. Gemini로 답변 생성
+    // 3. Gemini로 답변 생성
     const answer = generateAnswer(question, documents, config);
 
-    // 3. 로그 저장
-    logQA(sessionId, question, answer.text, answer.sources, config);
+    // 4. 응답 시간 계산
+    const endTime = new Date();
+    const responseTimeSeconds = (endTime - startTime) / 1000;
+    infoLog('응답 시간: ' + responseTimeSeconds.toFixed(2) + '초');
+
+    // 5. 메시지 ID 생성
+    const messageId = generateMessageId();
+
+    // 6. 로그 저장 (모든 메타데이터 포함)
+    logQA({
+      sessionId: sessionId,
+      userEmail: userEmail,
+      userRole: userRole,
+      question: question,
+      intent: intent,
+      entities: entities,
+      documents: documents,
+      answer: answer.text,
+      confidence: answer.confidence,
+      responseTime: responseTimeSeconds,
+      messageId: messageId,
+      escalation: 'N'
+    }, config);
 
     return {
       success: true,
       answer: answer.text,
       sources: answer.sources,
       confidence: answer.confidence,
-      messageId: generateMessageId()
+      messageId: messageId,
+      intent: intent,
+      responseTime: responseTimeSeconds
     };
 
   } catch (error) {
     Logger.log('❌ handleChat 오류: ' + error.toString());
+
+    // 오류 발생 시에도 응답 시간 계산
+    const endTime = new Date();
+    const responseTimeSeconds = (endTime - startTime) / 1000;
+
     return {
       success: false,
-      error: '답변 생성 중 오류가 발생했습니다: ' + error.message
+      error: '답변 생성 중 오류가 발생했습니다: ' + error.message,
+      responseTime: responseTimeSeconds
     };
   }
 }
@@ -405,6 +455,155 @@ function extractKeywords(text) {
   }
 
   return keywords.length > 0 ? keywords : ['일반'];
+}
+
+// ==================== 의도 추출 ====================
+function extractIntent(text) {
+  // 의도 분류 규칙 정의 (우선순위 순)
+  const intentPatterns = [
+    // 재임용 관련
+    { pattern: /(재임용).*(연구|실적|논문|저널|SSCI|SCIE|KCI)/i, intent: '재임용_연구실적문의' },
+    { pattern: /(재임용).*(교육|강의|수업)/i, intent: '재임용_교육실적문의' },
+    { pattern: /(재임용).*(기준|요건|조건)/i, intent: '재임용_기준문의' },
+    { pattern: /재임용/i, intent: '재임용_일반문의' },
+
+    // 휴직/복직 관련
+    { pattern: /(휴직).*(신청|절차|방법)/i, intent: '휴직신청' },
+    { pattern: /(출산|육아|간병).*(휴직)/i, intent: '휴직_출산육아' },
+    { pattern: /(복직).*(신청|절차)/i, intent: '복직신청' },
+    { pattern: /휴직/i, intent: '휴직_일반문의' },
+
+    // 연구년 관련
+    { pattern: /(연구년).*(신청|자격|조건)/i, intent: '연구년신청' },
+    { pattern: /연구년/i, intent: '연구년_일반문의' },
+
+    // 승진/임용 관련
+    { pattern: /(승진).*(임용|심사|기준)/i, intent: '승진임용문의' },
+    { pattern: /(정년보장).*(심사|트랙)/i, intent: '정년보장심사문의' },
+    { pattern: /(비전임|겸임|초빙).*(임용)/i, intent: '비전임교원임용' },
+
+    // 출장 관련
+    { pattern: /(출장).*(신청|절차)/i, intent: '출장신청' },
+    { pattern: /(출장).*(복명|보고)/i, intent: '출장복명서' },
+    { pattern: /출장/i, intent: '출장_일반문의' },
+
+    // 연구비 관련
+    { pattern: /(연구비).*(집행|사용|정산)/i, intent: '연구비집행' },
+    { pattern: /(연구비).*(신청|지원)/i, intent: '연구비신청' },
+    { pattern: /연구비/i, intent: '연구비_일반문의' },
+
+    // 강의 관련
+    { pattern: /(강의).*(시수|부담|배정)/i, intent: '강의시수문의' },
+    { pattern: /(강의).*(평가|결과)/i, intent: '강의평가문의' },
+    { pattern: /강의/i, intent: '강의_일반문의' },
+
+    // 급여/복지 관련
+    { pattern: /(급여|봉급|연봉).*(지급|명세)/i, intent: '급여문의' },
+    { pattern: /(4대보험|건강보험|국민연금)/i, intent: '복지문의' },
+
+    // 학사 관련
+    { pattern: /(학생).*(상담|지도)/i, intent: '학생지도' },
+    { pattern: /(성적).*(입력|수정|정정)/i, intent: '성적처리' },
+
+    // 인사 관련
+    { pattern: /(근무시간|출퇴근|근태)/i, intent: '근무시간문의' },
+    { pattern: /(증명서).*(발급|신청)/i, intent: '증명서발급' },
+
+    // 일반 문의
+    { pattern: /(규정|규칙|지침)/i, intent: '규정문의' },
+    { pattern: /(서식|양식|서류)/i, intent: '서식문의' }
+  ];
+
+  // 패턴 매칭을 통한 의도 추출
+  for (const item of intentPatterns) {
+    if (item.pattern.test(text)) {
+      debugLog('의도 추출 성공: ' + item.intent);
+      return item.intent;
+    }
+  }
+
+  // 매칭되는 의도가 없으면 일반 문의
+  debugLog('의도 추출 실패, 기본값 사용: 일반문의');
+  return '일반문의';
+}
+
+// ==================== 엔티티 추출 ====================
+function extractEntities(text) {
+  const entities = {};
+
+  // 기간 추출 (N년, N개월, N학기 등)
+  const periodPatterns = [
+    { pattern: /(\d+)\s*년/g, key: '기간_년' },
+    { pattern: /(\d+)\s*개월/g, key: '기간_개월' },
+    { pattern: /(\d+)\s*학기/g, key: '기간_학기' },
+    { pattern: /(\d+)\s*주/g, key: '기간_주' }
+  ];
+
+  for (const item of periodPatterns) {
+    const matches = text.match(item.pattern);
+    if (matches && matches.length > 0) {
+      entities[item.key] = matches[0];
+    }
+  }
+
+  // 날짜 추출 (YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD)
+  const datePattern = /(\d{4})[-./](\d{1,2})[-./](\d{1,2})/g;
+  const dateMatches = text.match(datePattern);
+  if (dateMatches && dateMatches.length > 0) {
+    entities['날짜'] = dateMatches;
+  }
+
+  // 저널/학술지 유형 추출
+  const journalPatterns = ['SSCI', 'SCIE', 'SCI', 'KCI', 'A&HCI', 'SCOPUS'];
+  const foundJournals = [];
+  for (const journal of journalPatterns) {
+    if (text.toUpperCase().includes(journal)) {
+      foundJournals.push(journal);
+    }
+  }
+  if (foundJournals.length > 0) {
+    entities['저널유형'] = foundJournals.join(',');
+  }
+
+  // 교원 직급 추출
+  const rankPatterns = ['교수', '부교수', '조교수', '전임강사', '겸임교수', '초빙교수', '명예교수'];
+  for (const rank of rankPatterns) {
+    if (text.includes(rank)) {
+      entities['직급'] = rank;
+      break;
+    }
+  }
+
+  // 학과/전공 추출 (간단한 패턴, 실제로는 학과 목록과 매칭 필요)
+  const deptPattern = /([가-힣]+)(과|학과|전공|학부)/g;
+  const deptMatches = text.match(deptPattern);
+  if (deptMatches && deptMatches.length > 0) {
+    entities['학과'] = deptMatches[0];
+  }
+
+  // 금액 추출
+  const amountPattern = /(\d{1,3}(,?\d{3})*)\s*(원|만원|억)/g;
+  const amountMatches = text.match(amountPattern);
+  if (amountMatches && amountMatches.length > 0) {
+    entities['금액'] = amountMatches;
+  }
+
+  // 학점 추출
+  const creditPattern = /(\d+)\s*학점/g;
+  const creditMatches = text.match(creditPattern);
+  if (creditMatches && creditMatches.length > 0) {
+    entities['학점'] = creditMatches[0];
+  }
+
+  // 시수 추출
+  const hourPattern = /(\d+)\s*시간/g;
+  const hourMatches = text.match(hourPattern);
+  if (hourMatches && hourMatches.length > 0) {
+    entities['시수'] = hourMatches[0];
+  }
+
+  debugLog('추출된 엔티티: ' + JSON.stringify(entities));
+  return entities;
 }
 
 // ==================== 문서 내용 읽기 ====================
@@ -595,11 +794,37 @@ ${context}
         throw new Error('응답에 텍스트가 없습니다');
       }
 
-      infoLog('✅ Gemini 응답 성공 (길이: ' + text.length + ')');
+      // Confidence 계산 (다양한 요소 고려)
+      let confidence = 0.5; // 기본값
+
+      // 문서 기반 답변인 경우 높은 신뢰도
+      if (documents.length > 0) {
+        confidence = 0.75 + (documents.length * 0.05); // 문서 1개당 +0.05
+        confidence = Math.min(confidence, 0.95); // 최대 0.95
+      } else {
+        confidence = 0.60; // 문서 없이 일반 지식으로 답변
+      }
+
+      // finishReason이 STOP이면 완전한 답변 (신뢰도 유지)
+      // MAX_TOKENS나 SAFETY 등이면 신뢰도 감소
+      if (candidate.finishReason && candidate.finishReason !== 'STOP') {
+        infoLog('비정상 종료: ' + candidate.finishReason);
+        confidence *= 0.8; // 20% 감소
+      }
+
+      // 답변이 너무 짧으면 불완전할 수 있음
+      if (text.length < 50) {
+        confidence *= 0.9;
+      }
+
+      // 소수점 2자리로 반올림
+      confidence = Math.round(confidence * 100) / 100;
+
+      infoLog('✅ Gemini 응답 성공 (길이: ' + text.length + ', 신뢰도: ' + confidence + ')');
       return {
         text: text,
         sources: documents,
-        confidence: documents.length > 0 ? 0.85 : 0.7
+        confidence: confidence
       };
     }
 
@@ -790,31 +1015,133 @@ function checkSensitiveInfo(text) {
   return { safe: true };
 }
 
-// ==================== QA 로그 저장 ====================
-function logQA(sessionId, question, answer, sources, config) {
+// ==================== QA 로그 저장 (향상된 버전) ====================
+function logQA(logData, config) {
+  try {
+    if (!config.spreadsheetId) {
+      infoLog('SPREADSHEET_ID 미설정, 로그 저장 생략');
+      return;
+    }
+
+    const ss = SpreadsheetApp.openById(config.spreadsheetId);
+
+    // 새로운 상세 로그 시트 사용 (없으면 구 형식 시트 사용)
+    let sheet = ss.getSheetByName('QA_이력_상세');
+
+    if (!sheet) {
+      // 상세 시트가 없으면 기존 QA_이력 시트에 기록
+      infoLog('QA_이력_상세 시트 없음, QA_이력 시트 사용');
+      sheet = ss.getSheetByName('QA_이력');
+
+      if (!sheet) {
+        errorLog('QA 로그 시트를 찾을 수 없음');
+        return;
+      }
+
+      // 구 형식으로 저장 (호환성)
+      const sourcesText = logData.documents ? logData.documents.map(s => s.filename).join(', ') : '';
+      sheet.appendRow([
+        new Date(),
+        logData.sessionId,
+        logData.question,
+        logData.answer,
+        sourcesText,
+        logData.documents ? logData.documents.length : 0
+      ]);
+
+      infoLog('✅ QA 로그 저장 완료 (구 형식)');
+      return;
+    }
+
+    // 새 형식: QA_이력_상세에 15개 컬럼 저장
+    // 1. 타임스탬프
+    // 2. 세션ID
+    // 3. 사용자이메일
+    // 4. 사용자역할
+    // 5. 질문
+    // 6. 의도
+    // 7. 엔티티(JSON)
+    // 8. 검색된문서(JSON)
+    // 9. 답변
+    // 10. Confidence
+    // 11. 피드백평점 (초기값 빈칸)
+    // 12. 피드백코멘트 (초기값 빈칸)
+    // 13. 에스컬레이션여부
+    // 14. 응답시간(초)
+    // 15. MessageID
+
+    // 엔티티를 JSON 문자열로 변환
+    const entitiesJson = JSON.stringify(logData.entities || {});
+
+    // 검색된 문서를 JSON 문자열로 변환 (중요 정보만)
+    const documentsJson = JSON.stringify(
+      (logData.documents || []).map(doc => ({
+        filename: doc.filename,
+        category: doc.category,
+        url: doc.url
+      }))
+    );
+
+    sheet.appendRow([
+      new Date(),                           // 타임스탬프
+      logData.sessionId || '',              // 세션ID
+      logData.userEmail || '',              // 사용자이메일
+      logData.userRole || 'guest',          // 사용자역할
+      logData.question || '',               // 질문
+      logData.intent || '일반문의',        // 의도
+      entitiesJson,                          // 엔티티(JSON)
+      documentsJson,                         // 검색된문서(JSON)
+      logData.answer || '',                 // 답변
+      logData.confidence || 0.5,            // Confidence
+      '',                                    // 피드백평점 (초기값 빈칸)
+      '',                                    // 피드백코멘트 (초기값 빈칸)
+      logData.escalation || 'N',            // 에스컬레이션여부
+      logData.responseTime || 0,            // 응답시간(초)
+      logData.messageId || ''               // MessageID
+    ]);
+
+    infoLog('✅ QA 로그 저장 완료 (상세 형식): ' + logData.messageId);
+
+    // 검색_문서_매핑 시트에도 문서 사용 기록 저장
+    if (logData.documents && logData.documents.length > 0) {
+      logDocumentUsage(logData.sessionId, logData.messageId, logData.documents, config);
+    }
+
+  } catch (error) {
+    errorLog('QA 로그 저장 실패: ' + error.toString());
+  }
+}
+
+// ==================== 문서 사용 로그 ====================
+function logDocumentUsage(sessionId, messageId, documents, config) {
   try {
     if (!config.spreadsheetId) return;
 
     const ss = SpreadsheetApp.openById(config.spreadsheetId);
-    const sheet = ss.getSheetByName('QA_이력');
+    const sheet = ss.getSheetByName('검색_문서_매핑');
 
-    if (!sheet) return;
+    if (!sheet) {
+      debugLog('검색_문서_매핑 시트 없음, 문서 사용 로그 생략');
+      return;
+    }
 
-    const sourcesText = sources.map(s => s.filename).join(', ');
+    // 각 문서별로 행 추가
+    documents.forEach(doc => {
+      sheet.appendRow([
+        new Date(),              // 타임스탬프
+        messageId,               // MessageID
+        sessionId,               // 세션ID
+        doc.filename,            // 문서명
+        doc.category,            // 카테고리
+        doc.id,                  // 문서ID
+        doc.url                  // 문서URL
+      ]);
+    });
 
-    sheet.appendRow([
-      new Date(),
-      sessionId,
-      question,
-      answer,
-      sourcesText,
-      sources.length
-    ]);
-
-    Logger.log('✅ QA 로그 저장 완료');
+    debugLog('문서 사용 로그 저장 완료: ' + documents.length + '개');
 
   } catch (error) {
-    Logger.log('QA 로그 저장 실패: ' + error.toString());
+    errorLog('문서 사용 로그 저장 실패: ' + error.toString());
   }
 }
 
