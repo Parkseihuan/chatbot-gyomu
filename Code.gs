@@ -224,12 +224,13 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
     const faqs = [];
 
     // 헤더 제외하고 데이터 읽기
+    // 컬럼 구조: [순위, 질문, 답변, 카테고리, 조회수, 평균평점]
     for (let i = 1; i < data.length && faqs.length < limit; i++) {
-      if (data[i][0]) { // 질문이 있으면
+      if (data[i][1]) { // 질문 컬럼 (두 번째 컬럼)이 있으면
         faqs.push({
-          question: data[i][0],
-          answer: data[i][1] || '',
-          category: data[i][2] || '일반'
+          question: data[i][1],  // 두 번째 컬럼: 질문
+          answer: data[i][2] || '',  // 세 번째 컬럼: 답변
+          category: data[i][3] || '일반'  // 네 번째 컬럼: 카테고리
         });
       }
     }
