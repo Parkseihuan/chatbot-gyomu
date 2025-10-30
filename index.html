@@ -396,21 +396,29 @@
       border-radius: 6px;
       cursor: pointer;
       font-size: 12px;
-      transition: all 0.2s;
+      transition: all 0.3s ease;
       display: flex;
       align-items: center;
       gap: 4px;
     }
 
-    .feedback-btn:hover {
+    .feedback-btn:hover:not(:disabled) {
       border-color: #667eea;
       background: #f3f4f6;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
-    .feedback-btn.positive:hover { color: #10b981; border-color: #10b981; }
-    .feedback-btn.negative:hover { color: #ef4444; border-color: #ef4444; }
+    .feedback-btn:disabled {
+      cursor: wait;
+      opacity: 0.7;
+      background: #f9fafb;
+    }
+
+    .feedback-btn.positive:hover:not(:disabled) { color: #10b981; border-color: #10b981; }
+    .feedback-btn.negative:hover:not(:disabled) { color: #ef4444; border-color: #ef4444; }
     .feedback-btn.escalate { color: #f59e0b; }
-    .feedback-btn.escalate:hover { border-color: #f59e0b; background: #fffbeb; }
+    .feedback-btn.escalate:hover:not(:disabled) { border-color: #f59e0b; background: #fffbeb; }
 
     .chat-input-area {
       padding: 20px 25px;
@@ -474,19 +482,33 @@
 
     .typing-indicator {
       display: flex;
-      gap: 4px;
+      align-items: center;
+      gap: 8px;
       padding: 14px 18px;
-      background: #f3f4f6;
+      background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%);
       border-radius: 18px;
       border-bottom-left-radius: 4px;
       width: fit-content;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+    }
+
+    .typing-text {
+      font-size: 13px;
+      color: #6366f1;
+      font-weight: 500;
+      margin-right: 4px;
+    }
+
+    .typing-dots {
+      display: flex;
+      gap: 4px;
     }
 
     .typing-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #9ca3af;
+      background: #6366f1;
       animation: typing 1.4s infinite;
     }
 
@@ -494,8 +516,14 @@
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
     @keyframes typing {
-      0%, 60%, 100% { transform: translateY(0); }
-      30% { transform: translateY(-10px); }
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+      30% {
+        transform: translateY(-8px);
+        opacity: 1;
+      }
     }
 
     .modal {
@@ -850,14 +878,19 @@
 
     // 버튼 피드백 표시 (중복 코드 제거)
     function showButtonFeedback(button, feedbackText, originalText) {
+      // 버튼 로딩 상태로 변경
       button.innerHTML = feedbackText;
       button.disabled = true;
-      button.style.opacity = '0.6';
+      button.style.opacity = '0.7';
+      button.style.cursor = 'wait';
+      button.style.transform = 'scale(0.98)';
 
       setTimeout(() => {
         button.innerHTML = originalText;
         button.disabled = false;
         button.style.opacity = '1';
+        button.style.cursor = 'pointer';
+        button.style.transform = 'scale(1)';
       }, API_CONFIG.BUTTON_FEEDBACK_DELAY_MS);
     }
 
@@ -985,6 +1018,7 @@
     // ==================== 메시지 전송 (POST - URLSearchParams) ====================
     async function sendMessage() {
       const input = document.getElementById('userInput');
+      const sendBtn = document.getElementById('sendBtn');
       const question = input.value.trim();
 
       // 입력 검증
@@ -999,17 +1033,23 @@
         alert(`질문은 최대 ${VALIDATION_CONFIG.MAX_QUESTION_LENGTH}자까지 입력 가능합니다.\n현재: ${question.length}자`);
         return;
       }
-      
+
+      // 전송 버튼 비활성화 및 로딩 상태 표시
+      const originalBtnText = sendBtn.innerHTML;
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '⏳ 전송 중...';
+      input.disabled = true;
+
       // 사용자 메시지 추가
       addMessage('user', question);
       input.value = '';
-      
+
       // 입력창 높이 초기화
       input.style.height = '50px';
-      
+
       // 타이핑 인디케이터 추가
       const typingId = addTypingIndicator();
-      
+
       try {
         console.log('메시지 전송:', question);
 
@@ -1053,6 +1093,12 @@
         console.error('Error:', error);
         removeTypingIndicator(typingId);
         addMessage('bot', '죄송합니다. 오류가 발생했습니다.\n잠시 후 다시 시도해주세요.\n\n오류: ' + error.message, { isError: true });
+      } finally {
+        // 전송 버튼 및 입력창 다시 활성화
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = originalBtnText;
+        input.disabled = false;
+        input.focus();
       }
     }
 
@@ -1221,21 +1267,24 @@
       const typingDiv = document.createElement('div');
       typingDiv.className = 'message bot';
       typingDiv.id = 'typing-indicator-' + Date.now();
-      
+
       typingDiv.innerHTML = `
         <div class="avatar">🤖</div>
         <div class="message-content">
           <div class="typing-indicator">
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
-            <div class="typing-dot"></div>
+            <span class="typing-text">답변 작성 중</span>
+            <div class="typing-dots">
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+              <div class="typing-dot"></div>
+            </div>
           </div>
         </div>
       `;
-      
+
       chatMessages.appendChild(typingDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight;
-      
+
       return typingDiv.id;
     }
 
