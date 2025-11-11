@@ -1038,11 +1038,33 @@
         if (data.success && data.faqs && data.faqs.length > 0) {
           faqList.innerHTML = '';
 
+          // 구버전 Apps Script 감지 (question이 숫자인 경우)
+          const isOldVersion = typeof data.faqs[0].question === 'number' ||
+                               data.faqs[0].question === '1' ||
+                               !data.source;
+
+          if (isOldVersion) {
+            console.warn('⚠️ Apps Script 구버전 감지! 재배포가 필요합니다.');
+            console.warn('임시로 샘플 FAQ를 사용합니다.');
+
+            // 프론트엔드 샘플 FAQ 사용
+            data.faqs = [
+              { question: '재임용 심사 기준은 무엇인가요?', category: '인사' },
+              { question: '휴직 신청은 어떻게 하나요?', category: '인사' },
+              { question: '연구년 신청 자격은 어떻게 되나요?', category: '연구' },
+              { question: '승진임용 절차가 궁금합니다', category: '인사' },
+              { question: '출장 복명서는 언제까지 제출하나요?', category: '행정' }
+            ];
+            data.source = 'frontend-fallback';
+          }
+
           // 데이터 소스 표시 (디버그용)
           if (data.source === 'real-data') {
             console.log('✅ 실제 질문 빈도 기반 Top 5 표시');
           } else if (data.source === 'faq-sheet') {
             console.log('📋 FAQ 시트에서 로드');
+          } else if (data.source === 'frontend-fallback') {
+            console.log('🔄 프론트엔드 Fallback FAQ 사용 (Apps Script 재배포 필요)');
           } else if (data.message) {
             console.log('⚠️ ' + data.message);
           }

@@ -21,9 +21,9 @@ const CONFIG = {
   MAX_SEARCH_KEYWORDS: 10,
 
   // Gemini API 설정
-  GEMINI_MODEL: 'gemini-2.5-pro',
-  GEMINI_TEMPERATURE: 0.7,
-  GEMINI_MAX_TOKENS: 1000,
+  GEMINI_MODEL: 'gemini-2.0-flash-exp',
+  GEMINI_TEMPERATURE: 0.3,  // Hallucination 방지를 위해 0.7 → 0.3으로 낮춤
+  GEMINI_MAX_TOKENS: 1500,  // 더 상세한 답변을 위해 1000 → 1500으로 증가
 
   // 기본 이메일
   DEFAULT_ADMIN_EMAIL: 'admin@university.ac.kr',
@@ -512,6 +512,9 @@ function generateAnswer(question, documents, config) {
       };
     }
 
+    // RAG 컨텍스트 감지 (프론트엔드가 RAG 컨텍스트를 질문에 포함시킴)
+    const hasRAGContext = question.includes('다음 문서를 참고하여');
+
     // 문서 컨텍스트 구성
     let context = '';
     if (documents.length > 0) {
@@ -521,8 +524,30 @@ function generateAnswer(question, documents, config) {
       });
     }
 
-    // Gemini API 호출
-    const prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+    // Gemini API 호출 - Hallucination 방지를 위한 강화된 프롬프트
+    let prompt;
+
+    if (hasRAGContext) {
+      // RAG 컨텍스트가 있는 경우: 반드시 문서 내용만 사용
+      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+
+⚠️ **중요 지침**:
+1. 아래 제공된 문서 내용만을 기반으로 답변하세요
+2. 문서에 없는 내용은 절대 추측하거나 만들어내지 마세요
+3. 확실하지 않으면 "제공된 문서에서 해당 정보를 찾을 수 없습니다"라고 답변하세요
+4. 답변할 때 문서의 구체적인 내용을 인용하세요
+
+${question}
+
+답변 형식:
+- 문서 내용을 기반으로 한 명확한 답변
+- 관련 절차나 규정이 있다면 구체적으로 명시
+- 추가 정보가 필요하면 담당자 연락을 권유
+
+답변:`;
+    } else {
+      // 일반 모드: 기본 프롬프트
+      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
 다음 질문에 친절하고 정확하게 답변해주세요.
 
 질문: ${question}
@@ -533,7 +558,10 @@ ${context}
 2. 관련 규정이나 절차 안내
 3. 추가 문의가 필요한 경우 안내
 
+**주의**: 확실하지 않은 내용은 추측하지 말고, 담당자에게 문의하도록 안내하세요.
+
 답변:`;
+    }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
