@@ -288,10 +288,12 @@ function handleChat(params) {
     const question = params.question || '';
     const sessionId = params.sessionId || '';
     const userRole = params.userRole || 'student';
+    const useRAG = params.useRAG === 'true';  // RAG 사용 여부 확인
 
     Logger.log('=== handleChat 시작 ===');
     Logger.log('Question: ' + question);
     Logger.log('SessionId: ' + sessionId);
+    Logger.log('useRAG: ' + useRAG);
 
     if (!question) {
       return {
@@ -312,8 +314,13 @@ function handleChat(params) {
 
     const config = getConfig();
 
-    // 1. 문서 검색
-    const documents = searchDocuments(question, config);
+    // 1. 문서 검색 (RAG 사용 시 건너뜀 - 중복 방지)
+    const documents = useRAG ? [] : searchDocuments(question, config);
+    if (useRAG) {
+      Logger.log('RAG 사용 중 - Apps Script 문서 검색 건너뜀');
+    } else {
+      Logger.log('일반 모드 - Apps Script 문서 검색 수행: ' + documents.length + '개');
+    }
 
     // 2. Gemini로 답변 생성
     const answer = generateAnswer(question, documents, config);
