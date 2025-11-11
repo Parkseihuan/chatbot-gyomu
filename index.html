@@ -981,6 +981,11 @@
 
     // ==================== 페이지 로드 ====================
     window.onload = function() {
+      console.log('=== 챗봇 초기화 시작 ===');
+      console.log('SCRIPT_URL:', SCRIPT_URL ? '설정됨' : '미설정');
+      console.log('RAG_API_URL:', RAG_API_URL);
+      console.log('USE_RAG:', USE_RAG);
+
       if (!SCRIPT_URL) {
         showError('⚠️ 설정 필요\n\nSCRIPT_URL 변수에 배포된 Apps Script URL을 입력해주세요.');
       } else {
@@ -1002,9 +1007,13 @@
     async function loadFAQ() {
       const faqList = document.getElementById('faqList');
 
+      // 임시로 로딩 표시
+      faqList.innerHTML = '<div style="text-align: center; padding: 20px; color: #667eea;">⏳ FAQ 로딩 중...</div>';
+
       try {
-        console.log('FAQ 로딩 시작...');
+        console.log('=== FAQ 로딩 시작 ===');
         const url = `${SCRIPT_URL}?action=getFAQ&limit=${API_CONFIG.FAQ_LIMIT}`;
+        console.log('요청 URL:', url);
 
         const response = await fetchWithRetry(url, {
           method: 'GET',
@@ -1012,12 +1021,19 @@
           cache: 'no-cache'
         });
 
+        console.log('FAQ 응답 상태:', response.status, response.statusText);
+
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
 
         const data = await response.json();
-        console.log('FAQ 응답 데이터:', data);
+        console.log('=== FAQ 응답 데이터 ===');
+        console.log('success:', data.success);
+        console.log('faqs 개수:', data.faqs?.length || 0);
+        console.log('source:', data.source);
+        console.log('message:', data.message);
+        console.log('전체 데이터:', data);
 
         if (data.success && data.faqs && data.faqs.length > 0) {
           faqList.innerHTML = '';
@@ -1034,7 +1050,12 @@
           data.faqs.forEach((faq, index) => {
             const question = faq.question || faq.title || faq.q || '';
 
-            if (!question) return;
+            if (!question) {
+              console.warn('FAQ 항목 #' + index + '에 질문이 없음:', faq);
+              return;
+            }
+
+            console.log('FAQ #' + (index + 1) + ':', question);
 
             const faqDiv = document.createElement('div');
             faqDiv.className = 'faq-item';
@@ -1057,27 +1078,38 @@
             faqDiv.appendChild(questionDiv);
 
             faqDiv.addEventListener('click', function() {
+              console.log('FAQ 클릭:', question);
               askFAQ(question);
             });
 
             faqList.appendChild(faqDiv);
           });
 
+          console.log('✅ FAQ ' + data.faqs.length + '개 렌더링 완료');
+
         } else {
+          console.warn('FAQ 데이터 없음 또는 실패:', data);
           const debugInfo = data.debug ? `<br><small style="color: #999;">디버그: ${data.debug}</small>` : '';
-          faqList.innerHTML = `<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.${debugInfo}</div>`;
+          const messageInfo = data.message ? `<br><small>${data.message}</small>` : '';
+          faqList.innerHTML = `<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.${messageInfo}${debugInfo}</div>`;
         }
 
       } catch (error) {
-        console.error('FAQ 로드 오류:', error);
+        console.error('❌ FAQ 로드 오류:', error);
+        console.error('오류 상세:', error.message);
+        console.error('오류 스택:', error.stack);
 
-        let errorMsg = 'FAQ를 불러올 수 없습니다.';
+        let errorMsg = '⚠️ FAQ를 불러올 수 없습니다.';
 
-        if (error.message.includes('Failed to fetch')) {
-          errorMsg += '<br><br>📌 확인사항:<br>1. Apps Script 배포 완료?<br>2. SCRIPT_URL 정확?<br>3. 액세스: 모든 사용자?';
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          errorMsg += '<br><br>📌 네트워크 오류<br><small>• CORS 문제일 수 있습니다<br>• Apps Script 배포 상태 확인<br>• "모든 사용자" 액세스 권한 확인</small>';
+        } else if (error.message.includes('timeout') || error.message.includes('abort')) {
+          errorMsg += '<br><br>⏱️ 시간 초과<br><small>Apps Script 응답이 너무 느립니다</small>';
         } else {
           errorMsg += '<br><br>오류: ' + error.message;
         }
+
+        errorMsg += '<br><br><button onclick="loadFAQ()" style="margin-top: 10px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">🔄 다시 시도</button>';
 
         faqList.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 15px; line-height: 1.6; font-size: 12px;">' + errorMsg + '</div>';
       }
@@ -1129,45 +1161,71 @@
 
         if (shouldUseRAG) {
           try {
-            console.log('RAG API 호출 중...');
+            console.log('=== RAG API 호출 시작 ===');
+            console.log('질문:', question);
+
             const ragResponse = await fetchRAGWithRetry(`${RAG_API_URL}/chat`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 query: question,
-                top_k: 3
+                top_k: 5  // 3 → 5로 증가하여 더 다양한 문서 검색
               })
             });
 
             if (ragResponse.ok) {
               const ragData = await ragResponse.json();
+              console.log('=== RAG 응답 데이터 ===');
+              console.log('context 길이:', ragData.context?.length || 0);
+              console.log('raw sources:', ragData.sources);
+
               ragContext = ragData.context || '';
 
-              // 출처 정규화: 모든 출처를 일관된 객체 형식으로 변환
+              // 출처 정규화 및 중복 제거
               const rawSources = ragData.sources || [];
-              ragSources = rawSources.map(source => {
-                // 이미 정규화된 객체인 경우
-                if (typeof source === 'object' && source !== null && source.filename) {
+              const seenFilenames = new Set(); // 중복 체크용
+
+              ragSources = rawSources
+                .map(source => {
+                  // 이미 정규화된 객체인 경우
+                  if (typeof source === 'object' && source !== null && source.filename) {
+                    return {
+                      filename: source.filename,
+                      category: source.category || 'RAG',
+                      source: 'rag-api'
+                    };
+                  }
+                  // 문자열이거나 기타 형식인 경우
+                  const filename = typeof source === 'string'
+                    ? source
+                    : (source?.source || source?.name || source?.filename || String(source));
+
                   return {
-                    filename: source.filename,
-                    category: source.category || 'RAG',
+                    filename: filename,
+                    category: 'RAG',
                     source: 'rag-api'
                   };
-                }
-                // 문자열이거나 기타 형식인 경우
-                const filename = typeof source === 'string'
-                  ? source
-                  : (source?.source || source?.name || source?.filename || String(source));
-
-                return {
-                  filename: filename,
-                  category: 'RAG',
-                  source: 'rag-api'
-                };
-              });
+                })
+                .filter(source => {
+                  // 중복 문서 제거
+                  if (seenFilenames.has(source.filename)) {
+                    console.log('중복 문서 제거:', source.filename);
+                    return false;
+                  }
+                  seenFilenames.add(source.filename);
+                  return true;
+                });
 
               usedRAG = ragSources.length > 0 && ragContext.length > 50;
-              console.log('RAG 검색 성공:', ragSources.length, '개 문서');
+
+              console.log('=== RAG 검색 결과 ===');
+              console.log('유효한 문서 수:', ragSources.length);
+              console.log('문서 목록:', ragSources.map(s => s.filename));
+              console.log('context 미리보기:', ragContext.substring(0, 200) + '...');
+
+              if (ragSources.length === 1) {
+                console.warn('⚠️ 경고: 문서가 1개만 검색됨. RAG API vector search 확인 필요');
+              }
             } else {
               console.warn('RAG API 오류:', ragResponse.status);
             }
@@ -1390,10 +1448,28 @@
 
       // 스크롤 UX 개선: 봇 답변은 메시지 시작점으로, 사용자 메시지는 맨 아래로
       if (sender === 'bot') {
-        // 봇 답변: 답변의 시작 부분이 보이도록 부드럽게 스크롤
-        setTimeout(() => {
-          messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
+        // 봇 답변: 답변의 시작 부분이 보이도록 스크롤
+        // requestAnimationFrame을 2번 사용하여 렌더링 완료 보장
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            // 메시지 div의 위치를 가져와서 명시적으로 스크롤
+            const messageTop = messageDiv.offsetTop;
+            const containerTop = chatMessages.offsetTop;
+            const scrollPosition = messageTop - containerTop - 20; // 20px 여유 공간
+
+            console.log('봇 답변 스크롤:', {
+              messageTop: messageTop,
+              containerTop: containerTop,
+              scrollPosition: scrollPosition
+            });
+
+            // smooth scroll
+            chatMessages.scrollTo({
+              top: scrollPosition,
+              behavior: 'smooth'
+            });
+          });
+        });
       } else {
         // 사용자 메시지: 즉시 맨 아래로 스크롤
         chatMessages.scrollTop = chatMessages.scrollHeight;
