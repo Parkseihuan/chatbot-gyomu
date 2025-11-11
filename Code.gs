@@ -193,11 +193,26 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (SPREADSHEET_ID 미설정)'
+        message: '샘플 FAQ (SPREADSHEET_ID 미설정)',
+        debug: 'SPREADSHEET_ID not configured'
       };
     }
 
     const ss = SpreadsheetApp.openById(config.spreadsheetId);
+
+    // 1단계: QA_이력에서 실제 질문 빈도 집계
+    const topQuestions = getTopQuestionsFromHistory(ss, limit);
+
+    if (topQuestions && topQuestions.length > 0) {
+      Logger.log('✅ 실제 질문 빈도 기반 Top ' + topQuestions.length + '개 반환');
+      return {
+        success: true,
+        faqs: topQuestions,
+        source: 'real-data'
+      };
+    }
+
+    // 2단계: QA_이력이 없으면 FAQ 시트에서 가져오기
     const sheet = ss.getSheetByName('자주묻는질문_FAQ');
 
     if (!sheet) {
@@ -205,7 +220,8 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (시트 없음)'
+        message: '샘플 FAQ (시트 없음)',
+        debug: 'Sheet not found'
       };
     }
 
@@ -229,14 +245,16 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (데이터 없음)'
+        message: '샘플 FAQ (데이터 없음)',
+        debug: 'No data in sheet'
       };
     }
 
-    Logger.log('✅ FAQ ' + faqs.length + '개 반환');
+    Logger.log('✅ FAQ 시트에서 ' + faqs.length + '개 반환');
     return {
       success: true,
-      faqs: faqs
+      faqs: faqs,
+      source: 'faq-sheet'
     };
 
   } catch (error) {
@@ -244,8 +262,82 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
     return {
       success: true,
       faqs: getSampleFAQs(limit),
-      message: '샘플 FAQ (오류 발생)'
+      message: '샘플 FAQ (오류 발생)',
+      debug: error.toString()
     };
+  }
+}
+
+// QA_이력에서 질문 빈도를 집계하여 Top N 추출
+function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMIT) {
+  try {
+    const qaSheet = spreadsheet.getSheetByName('QA_이력');
+
+    if (!qaSheet) {
+      Logger.log('QA_이력 시트 없음');
+      return null;
+    }
+
+    const data = qaSheet.getDataRange().getValues();
+
+    // 최소 2행 이상 있어야 함 (헤더 + 데이터 1개 이상)
+    if (data.length < 2) {
+      Logger.log('QA_이력에 데이터 없음');
+      return null;
+    }
+
+    // 질문별 빈도 집계 (질문 정규화: 소문자, 공백 제거)
+    const questionCounts = {};
+    const questionDetails = {}; // 원본 질문과 답변 저장
+
+    // 헤더 제외하고 집계 (1행부터)
+    for (let i = 1; i < data.length; i++) {
+      const question = data[i][2]; // 3번째 컬럼: 질문
+      const answer = data[i][3];   // 4번째 컬럼: 답변
+
+      if (!question || typeof question !== 'string') continue;
+
+      // 질문 정규화 (대소문자 통일, 앞뒤 공백 제거)
+      const normalizedQuestion = question.trim().toLowerCase();
+
+      if (normalizedQuestion.length < 2) continue; // 너무 짧은 질문 제외
+
+      // 빈도 증가
+      if (!questionCounts[normalizedQuestion]) {
+        questionCounts[normalizedQuestion] = 0;
+        questionDetails[normalizedQuestion] = {
+          original: question.trim(),
+          answer: answer || '답변 준비 중입니다.'
+        };
+      }
+      questionCounts[normalizedQuestion]++;
+    }
+
+    // 빈도순으로 정렬
+    const sortedQuestions = Object.keys(questionCounts).sort(function(a, b) {
+      return questionCounts[b] - questionCounts[a];
+    });
+
+    // 상위 N개 추출
+    const topFAQs = [];
+    for (let i = 0; i < Math.min(limit, sortedQuestions.length); i++) {
+      const normalizedQ = sortedQuestions[i];
+      const details = questionDetails[normalizedQ];
+
+      topFAQs.push({
+        question: details.original,
+        answer: details.answer,
+        category: '자주 묻는 질문',
+        count: questionCounts[normalizedQ]  // 질문 횟수 포함
+      });
+    }
+
+    Logger.log('✅ QA_이력에서 Top ' + topFAQs.length + '개 추출 완료');
+    return topFAQs;
+
+  } catch (error) {
+    Logger.log('getTopQuestionsFromHistory 오류: ' + error.toString());
+    return null;
   }
 }
 

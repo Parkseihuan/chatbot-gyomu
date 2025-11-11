@@ -1017,9 +1017,19 @@
         }
 
         const data = await response.json();
+        console.log('FAQ 응답 데이터:', data);
 
         if (data.success && data.faqs && data.faqs.length > 0) {
           faqList.innerHTML = '';
+
+          // 데이터 소스 표시 (디버그용)
+          if (data.source === 'real-data') {
+            console.log('✅ 실제 질문 빈도 기반 Top 5 표시');
+          } else if (data.source === 'faq-sheet') {
+            console.log('📋 FAQ 시트에서 로드');
+          } else if (data.message) {
+            console.log('⚠️ ' + data.message);
+          }
 
           data.faqs.forEach((faq, index) => {
             const question = faq.question || faq.title || faq.q || '';
@@ -1034,8 +1044,14 @@
             rankDiv.textContent = String(index + 1);
 
             const questionDiv = document.createElement('div');
-            questionDiv.textContent = question;
             questionDiv.style.flex = '1';
+
+            // 질문 횟수 표시 (실제 데이터인 경우)
+            if (faq.count && faq.count > 1) {
+              questionDiv.innerHTML = `${question} <span style="color: #667eea; font-size: 11px; font-weight: 600;">(${faq.count}회)</span>`;
+            } else {
+              questionDiv.textContent = question;
+            }
 
             faqDiv.appendChild(rankDiv);
             faqDiv.appendChild(questionDiv);
@@ -1048,7 +1064,8 @@
           });
 
         } else {
-          faqList.innerHTML = '<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.</div>';
+          const debugInfo = data.debug ? `<br><small style="color: #999;">디버그: ${data.debug}</small>` : '';
+          faqList.innerHTML = `<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.${debugInfo}</div>`;
         }
 
       } catch (error) {
@@ -1371,7 +1388,16 @@
         }
       }
 
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      // 스크롤 UX 개선: 봇 답변은 메시지 시작점으로, 사용자 메시지는 맨 아래로
+      if (sender === 'bot') {
+        // 봇 답변: 답변의 시작 부분이 보이도록 부드럽게 스크롤
+        setTimeout(() => {
+          messageDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      } else {
+        // 사용자 메시지: 즉시 맨 아래로 스크롤
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
     }
 
     function addTypingIndicator() {
