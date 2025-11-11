@@ -81,9 +81,29 @@
       color: white;
     }
 
-    .badge-free {
+    .badge-rag {
       background: #fbbf24;
       color: #000;
+    }
+
+    /* RAG 상태 표시 */
+    .rag-status {
+      background: #f0f0f0;
+      padding: 10px;
+      text-align: center;
+      font-size: 0.9em;
+      color: #666;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .rag-status.active {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .rag-status.inactive {
+      background: #fff3cd;
+      color: #856404;
     }
 
     .main-content {
@@ -231,20 +251,20 @@
       color: white;
       border-bottom-right-radius: 4px;
     }
-    
+
     /* 마크다운 스타일 */
     .markdown-content {
       word-wrap: break-word;
     }
-    
+
     .markdown-content p {
       margin: 0 0 12px 0;
     }
-    
+
     .markdown-content p:last-child {
       margin-bottom: 0;
     }
-    
+
     .markdown-content h1,
     .markdown-content h2,
     .markdown-content h3 {
@@ -252,31 +272,31 @@
       font-weight: 600;
       line-height: 1.3;
     }
-    
+
     .markdown-content h1 {
       font-size: 18px;
       color: #667eea;
     }
-    
+
     .markdown-content h2 {
       font-size: 16px;
       color: #374151;
     }
-    
+
     .markdown-content h3 {
       font-size: 15px;
       color: #4b5563;
     }
-    
+
     .markdown-content strong {
       font-weight: 600;
       color: #1f2937;
     }
-    
+
     .markdown-content em {
       font-style: italic;
     }
-    
+
     .markdown-content code {
       background: #e5e7eb;
       padding: 2px 6px;
@@ -285,7 +305,7 @@
       font-size: 13px;
       color: #dc2626;
     }
-    
+
     .markdown-content pre {
       background: #1f2937;
       color: #f9fafb;
@@ -294,31 +314,31 @@
       overflow-x: auto;
       margin: 12px 0;
     }
-    
+
     .markdown-content pre code {
       background: none;
       padding: 0;
       color: #f9fafb;
       font-size: 13px;
     }
-    
+
     .markdown-content ul,
     .markdown-content ol {
       margin: 8px 0;
       padding-left: 24px;
     }
-    
+
     .markdown-content li {
       margin: 4px 0;
       line-height: 1.6;
     }
-    
+
     .markdown-content a {
       color: #667eea;
       text-decoration: none;
       border-bottom: 1px solid #667eea;
     }
-    
+
     .markdown-content a:hover {
       color: #5568d3;
       border-bottom-color: #5568d3;
@@ -346,6 +366,18 @@
     .confidence-high { background: #d1fae5; color: #065f46; }
     .confidence-medium { background: #fef3c7; color: #92400e; }
     .confidence-low { background: #fee2e2; color: #991b1b; }
+
+    .rag-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #4CAF50;
+      color: white;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
 
     .sources {
       margin-top: 12px;
@@ -649,12 +681,17 @@
       <div class="header-icon">🎓</div>
       <div class="header-content">
         <h1>용인대학교 교무지원과 AI 챗봇</h1>
-        <p>AI 기반 규정 검색 및 상담 서비스 (v1.2 - CORS Free)</p>
+        <p>AI 기반 RAG 검색 및 상담 서비스 (v2.0 - RAG Integrated)</p>
       </div>
       <div class="header-badges">
         <span class="badge badge-ai">✨ AI</span>
-        <span class="badge badge-free">🔓 무료</span>
+        <span class="badge badge-rag">🔍 RAG</span>
       </div>
+    </div>
+
+    <!-- RAG Status -->
+    <div class="rag-status" id="ragStatus">
+      RAG 시스템 확인 중...
     </div>
 
     <!-- Main Content -->
@@ -754,24 +791,27 @@
   </div>
 
   <script>
-    // ==================== 설정 및 상수 ====================
-    // ⚠️ 배포된 Apps Script URL을 여기에 입력하세요!
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDGQ4YRlMi4ozeFb4HeZmogB85vACL77LFi8aU5wBIG0_3_9n49Bd-AWn22lRONNH2xw/exec';  // 예: https://script.google.com/macros/s/AKfycby.../exec
+    // ==================== RAG 설정 ====================
+    const RAG_API_URL = 'https://rag-api-424378449323.asia-northeast3.run.app';
+    const USE_RAG = true;  // RAG 사용 여부
+
+    // ==================== Apps Script 설정 ====================
+    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyDGQ4YRlMi4ozeFb4HeZmogB85vACL77LFi8aU5wBIG0_3_9n49Bd-AWn22lRONNH2xw/exec';
 
     // API 설정
     const API_CONFIG = {
-      TIMEOUT_MS: 30000,           // 30초 타임아웃
-      MAX_RETRIES: 3,              // 최대 재시도 횟수
-      RETRY_DELAY_MS: 1000,        // 초기 재시도 대기 시간 (1초)
-      FAQ_LIMIT: 5,                // FAQ 표시 개수
-      BUTTON_FEEDBACK_DELAY_MS: 1000  // 버튼 피드백 표시 시간
+      TIMEOUT_MS: 30000,
+      MAX_RETRIES: 3,
+      RETRY_DELAY_MS: 1000,
+      FAQ_LIMIT: 5,
+      BUTTON_FEEDBACK_DELAY_MS: 1000
     };
 
     // 입력 검증 설정
     const VALIDATION_CONFIG = {
-      MAX_QUESTION_LENGTH: 1000,   // 최대 질문 길이
-      MIN_QUESTION_LENGTH: 2,      // 최소 질문 길이
-      MAX_COMMENT_LENGTH: 500      // 최대 코멘트 길이
+      MAX_QUESTION_LENGTH: 1000,
+      MIN_QUESTION_LENGTH: 2,
+      MAX_COMMENT_LENGTH: 500
     };
 
     // ==================== 전역 변수 ====================
@@ -787,6 +827,37 @@
 
     function generateMessageId() {
       return 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // ==================== RAG 상태 확인 ====================
+    async function checkRAGStatus() {
+      if (!USE_RAG) {
+        updateRAGStatus('일반 모드 (RAG 비활성화)', 'inactive');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${RAG_API_URL}/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          updateRAGStatus(`RAG 연결됨 (문서 ${data.vector_store_count || 0}개)`, 'active');
+        } else {
+          updateRAGStatus('RAG 서버 오류 - 일반 모드로 작동', 'inactive');
+        }
+      } catch (error) {
+        console.warn('RAG 서버에 연결할 수 없습니다:', error);
+        updateRAGStatus('RAG 연결 실패 - 일반 모드로 작동', 'inactive');
+      }
+    }
+
+    function updateRAGStatus(message, status) {
+      const statusElement = document.getElementById('ragStatus');
+      statusElement.textContent = message;
+      statusElement.className = `rag-status ${status}`;
     }
 
     // 타임아웃 기능이 있는 fetch
@@ -810,7 +881,7 @@
       }
     }
 
-    // 재시도 로직이 있는 fetch (exponential backoff)
+    // 재시도 로직이 있는 fetch
     async function fetchWithRetry(url, options = {}, maxRetries = API_CONFIG.MAX_RETRIES) {
       let lastError;
 
@@ -819,23 +890,19 @@
           console.log(`API 요청 시도 ${attempt + 1}/${maxRetries + 1}`);
           const response = await fetchWithTimeout(url, options);
 
-          // 성공하면 즉시 반환
           if (response.ok) {
             return response;
           }
 
-          // 4xx 에러는 재시도하지 않음 (클라이언트 오류)
           if (response.status >= 400 && response.status < 500) {
             return response;
           }
 
-          // 5xx 에러는 재시도
           lastError = new Error(`서버 오류: ${response.status}`);
 
         } catch (error) {
           lastError = error;
 
-          // 마지막 시도가 아니면 대기 후 재시도
           if (attempt < maxRetries) {
             const delay = API_CONFIG.RETRY_DELAY_MS * Math.pow(2, attempt);
             console.log(`${delay}ms 후 재시도...`);
@@ -844,11 +911,9 @@
         }
       }
 
-      // 모든 재시도 실패
       throw lastError || new Error('알 수 없는 네트워크 오류');
     }
 
-    // 버튼 피드백 표시 (중복 코드 제거)
     function showButtonFeedback(button, feedbackText, originalText) {
       button.innerHTML = feedbackText;
       button.disabled = true;
@@ -864,10 +929,14 @@
     // ==================== 페이지 로드 ====================
     window.onload = function() {
       if (!SCRIPT_URL) {
-        showError('⚠️ 설정 필요\n\nSCRIPT_URL 변수에 배포된 Apps Script URL을 입력해주세요.\n\n배포 방법:\n1. Apps Script 편집기\n2. 배포 > 새 배포\n3. 유형: 웹 앱\n4. 액세스: 모든 사용자\n5. URL 복사하여 붙여넣기');
+        showError('⚠️ 설정 필요\n\nSCRIPT_URL 변수에 배포된 Apps Script URL을 입력해주세요.');
       } else {
+        checkRAGStatus();
         loadFAQ();
         document.getElementById('userInput').focus();
+
+        // 30초마다 RAG 상태 확인
+        setInterval(checkRAGStatus, 30000);
       }
     };
 
@@ -876,15 +945,12 @@
       faqList.innerHTML = '<div style="color: #ef4444; background: #fee2e2; padding: 15px; border-radius: 8px; white-space: pre-line; font-size: 12px; line-height: 1.6;">' + message + '</div>';
     }
 
-    // ==================== FAQ 로딩 (GET 방식) ====================
+    // ==================== FAQ 로딩 ====================
     async function loadFAQ() {
       const faqList = document.getElementById('faqList');
 
       try {
         console.log('FAQ 로딩 시작...');
-        console.log('SCRIPT_URL:', SCRIPT_URL);
-
-        // ⭐ GET 방식으로 변경 (preflight 회피) + 재시도 로직
         const url = `${SCRIPT_URL}?action=getFAQ&limit=${API_CONFIG.FAQ_LIMIT}`;
 
         const response = await fetchWithRetry(url, {
@@ -893,96 +959,66 @@
           cache: 'no-cache'
         });
 
-        console.log('Response status:', response.status);
-        console.log('Response ok:', response.ok);
-
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
-        
+
         const data = await response.json();
-        console.log('FAQ 데이터:', data);
-        
+
         if (data.success && data.faqs && data.faqs.length > 0) {
-          console.log('=== FAQ 표시 시작 ===');
-          console.log('FAQ 개수:', data.faqs.length);
-          console.log('첫 번째 FAQ:', data.faqs[0]);
-          
-          // 기존 내용 삭제
           faqList.innerHTML = '';
-          
+
           data.faqs.forEach((faq, index) => {
-            console.log(`FAQ ${index + 1} 처리 중:`, faq);
-            
-            // question 추출
             const question = faq.question || faq.title || faq.q || '';
-            console.log(`  - 질문: "${question}"`);
-            
-            if (!question) {
-              console.warn(`FAQ ${index + 1}: 질문이 비어있음!`, faq);
-              return;
-            }
-            
-            // FAQ 아이템 생성
+
+            if (!question) return;
+
             const faqDiv = document.createElement('div');
             faqDiv.className = 'faq-item';
-            faqDiv.style.cursor = 'pointer';
-            
-            // 번호 생성
+
             const rankDiv = document.createElement('div');
             rankDiv.className = 'faq-rank';
             rankDiv.textContent = String(index + 1);
-            
-            // 질문 생성
+
             const questionDiv = document.createElement('div');
             questionDiv.textContent = question;
             questionDiv.style.flex = '1';
-            
-            // 조립
+
             faqDiv.appendChild(rankDiv);
             faqDiv.appendChild(questionDiv);
-            
-            // 클릭 이벤트
+
             faqDiv.addEventListener('click', function() {
-              console.log('FAQ 클릭:', question);
               askFAQ(question);
             });
-            
-            // 추가
+
             faqList.appendChild(faqDiv);
-            console.log(`  - FAQ ${index + 1} 추가 완료`);
           });
-          
-          console.log('=== FAQ 표시 완료 ===');
-          console.log('실제 추가된 항목:', faqList.children.length);
-          
+
         } else {
-          console.warn('FAQ 데이터 없음 또는 형식 오류:', data);
           faqList.innerHTML = '<div style="color: #999; text-align: center; padding: 20px; font-size: 13px;">등록된 FAQ가 없습니다.</div>';
         }
-        
+
       } catch (error) {
         console.error('FAQ 로드 오류:', error);
-        
+
         let errorMsg = 'FAQ를 불러올 수 없습니다.';
-        
+
         if (error.message.includes('Failed to fetch')) {
           errorMsg += '<br><br>📌 확인사항:<br>1. Apps Script 배포 완료?<br>2. SCRIPT_URL 정확?<br>3. 액세스: 모든 사용자?';
         } else {
           errorMsg += '<br><br>오류: ' + error.message;
         }
-        
+
         faqList.innerHTML = '<div style="color: #ef4444; text-align: center; padding: 15px; line-height: 1.6; font-size: 12px;">' + errorMsg + '</div>';
       }
     }
 
-    // FAQ 클릭
     function askFAQ(question) {
       document.getElementById('userInput').value = question;
       sendMessage();
     }
 
-    // ==================== 메시지 전송 (POST - URLSearchParams) ====================
+    // ==================== 메시지 전송 (RAG 통합) ====================
     async function sendMessage() {
       const input = document.getElementById('userInput');
       const question = input.value.trim();
@@ -999,56 +1035,113 @@
         alert(`질문은 최대 ${VALIDATION_CONFIG.MAX_QUESTION_LENGTH}자까지 입력 가능합니다.\n현재: ${question.length}자`);
         return;
       }
-      
+
       // 사용자 메시지 추가
       addMessage('user', question);
       input.value = '';
-      
-      // 입력창 높이 초기화
       input.style.height = '50px';
-      
+
       // 타이핑 인디케이터 추가
       const typingId = addTypingIndicator();
-      
+
       try {
         console.log('메시지 전송:', question);
 
-        // ⭐ URLSearchParams 사용 (preflight 회피) + 재시도 로직
+        // ⭐ 1단계: RAG에서 관련 문서 검색
+        let ragContext = '';
+        let ragSources = [];
+        let usedRAG = false;
+
+        // 간단한 질문/인사말 필터링 (문장부호 제거 후 패턴 매칭)
+        const questionClean = question.trim().replace(/[.,!?~\s]+$/g, '');
+        const simplePatterns = /^(안녕|안녕하세요|hi|hello|ㅎㅇ|반가워|반갑습니다|감사|감사합니다|고마워|고맙습니다|ㄱㅅ|ㄳ|bye|잘가|끝|ㅂㅇ)$/i;
+        const shouldUseRAG = USE_RAG && questionClean.length > 5 && !simplePatterns.test(questionClean);
+
+        if (shouldUseRAG) {
+          try {
+            console.log('RAG API 호출 중...');
+            const ragResponse = await fetch(`${RAG_API_URL}/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: question,
+                top_k: 3
+              }),
+              signal: AbortSignal.timeout(5000)
+            });
+
+            if (ragResponse.ok) {
+              const ragData = await ragResponse.json();
+              ragContext = ragData.context || '';
+
+              // 출처 처리 (API에서 이미 중복 제거됨, 안전하게 문자열 변환)
+              const rawSources = ragData.sources || [];
+              ragSources = rawSources.map(source => {
+                if (typeof source === 'object' && source !== null) {
+                  return source.source || source.name || source.filename || JSON.stringify(source);
+                }
+                return String(source);
+              });
+
+              usedRAG = ragSources.length > 0 && ragContext.length > 50;
+              console.log('RAG 검색 성공:', ragSources.length, '개 문서');
+            } else {
+              console.warn('RAG API 오류:', ragResponse.status);
+            }
+          } catch (ragError) {
+            console.warn('RAG 검색 실패 (일반 모드로 진행):', ragError.message);
+          }
+        } else {
+          console.log('간단한 질문 - RAG 건너뜀');
+        }
+
+        // ⭐ 2단계: Apps Script에 전달할 질문 구성
+        let finalQuestion = question;
+
+        if (ragContext) {
+          finalQuestion = `다음 문서를 참고하여 답변해주세요:\n\n${ragContext}\n\n질문: ${question}`;
+          console.log('RAG 컨텍스트 포함:', ragContext.length, '자');
+        }
+
+        // ⭐ 3단계: Apps Script API 호출
         const formData = new URLSearchParams();
         formData.append('action', 'chat');
-        formData.append('question', question);
+        formData.append('question', finalQuestion);
         formData.append('sessionId', sessionId);
         formData.append('userRole', 'faculty');
 
         const response = await fetchWithRetry(SCRIPT_URL, {
           method: 'POST',
-          body: formData,  // application/x-www-form-urlencoded
+          body: formData,
           mode: 'cors',
           cache: 'no-cache'
         });
 
-        // 타이핑 인디케이터 제거
         removeTypingIndicator(typingId);
 
         if (!response.ok) {
           throw new Error('API 응답 오류: ' + response.status);
         }
-        
+
         const data = await response.json();
         console.log('응답 데이터:', data);
-        
+
         if (data.success) {
+          // RAG 출처를 우선 사용, 없으면 Apps Script 출처 사용
+          const sources = usedRAG ? ragSources : (data.sources || []);
+
           addMessage('bot', data.answer, {
-            sources: data.sources || [],
+            sources: sources,
             confidence: data.confidence || 0.5,
-            messageId: data.messageId || generateMessageId()
+            messageId: data.messageId || generateMessageId(),
+            usedRAG: usedRAG
           });
         } else if (data.filtered) {
           addMessage('bot', data.error, { isError: true });
         } else {
           throw new Error(data.error || '알 수 없는 오류');
         }
-        
+
       } catch (error) {
         console.error('Error:', error);
         removeTypingIndicator(typingId);
@@ -1056,7 +1149,6 @@
       }
     }
 
-    // 키 입력 처리
     function handleKeyPress(event) {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -1064,7 +1156,6 @@
       }
     }
 
-    // 문자 수 카운터 업데이트
     function updateCharCount() {
       const input = document.getElementById('userInput');
       const charCount = document.getElementById('charCount');
@@ -1073,13 +1164,12 @@
 
       charCount.textContent = `${length}/${maxLength}`;
 
-      // 길이에 따라 색상 변경
       if (length > maxLength * 0.9) {
-        charCount.style.color = '#ef4444'; // 빨강
+        charCount.style.color = '#ef4444';
       } else if (length > maxLength * 0.7) {
-        charCount.style.color = '#f59e0b'; // 주황
+        charCount.style.color = '#f59e0b';
       } else {
-        charCount.style.color = '#9ca3af'; // 회색
+        charCount.style.color = '#9ca3af';
       }
     }
 
@@ -1088,66 +1178,73 @@
       const chatMessages = document.getElementById('chatMessages');
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${sender}`;
-      
+
       const time = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-      
+
       if (sender === 'user') {
         const avatar = document.createElement('div');
         avatar.className = 'avatar';
         avatar.textContent = '👤';
-        
+
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
-        
+
         const bubble = document.createElement('div');
         bubble.className = 'message-bubble';
         bubble.textContent = text;
-        
+
         const meta = document.createElement('div');
         meta.className = 'message-meta';
         meta.innerHTML = `<span>${time}</span>`;
-        
+
         messageContent.appendChild(bubble);
         messageContent.appendChild(meta);
-        
+
         messageDiv.appendChild(avatar);
         messageDiv.appendChild(messageContent);
       } else {
         let confidenceBadge = '';
-        let confidenceClass = '';
-        
+
         if (options.confidence) {
           if (options.confidence >= 0.8) {
-            confidenceClass = 'confidence-high';
-            confidenceBadge = '<span class="confidence-badge ' + confidenceClass + '">✓ 신뢰도 높음</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-high">✓ 신뢰도 높음</span>';
           } else if (options.confidence >= 0.6) {
-            confidenceClass = 'confidence-medium';
-            confidenceBadge = '<span class="confidence-badge ' + confidenceClass + '">◐ 신뢰도 보통</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-medium">◐ 신뢰도 보통</span>';
           } else {
-            confidenceClass = 'confidence-low';
-            confidenceBadge = '<span class="confidence-badge ' + confidenceClass + '">! 신뢰도 낮음</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-low">! 신뢰도 낮음</span>';
           }
         }
-        
+
+        let ragIndicatorHtml = '';
+        if (options.usedRAG) {
+          ragIndicatorHtml = '<span class="rag-indicator">🔍 RAG</span>';
+        }
+
         let sourcesHtml = '';
         if (options.sources && options.sources.length > 0) {
           sourcesHtml = '<div class="sources"><div class="sources-title">📚 참고 문서</div>';
-          options.sources.forEach(source => {
-            const category = document.createElement('div');
-            category.textContent = source.category;
-            const filename = document.createElement('div');
-            filename.textContent = source.filename;
-            
-            sourcesHtml += `
-              <div class="source-item">
-                <span class="source-category">${source.category || ''}</span>
-                <span>${source.filename || ''}</span>
-              </div>
-            `;
+
+          options.sources.forEach((source, index) => {
+            // source가 객체인 경우 (Apps Script 응답)
+            if (typeof source === 'object' && source !== null) {
+              sourcesHtml += `
+                <div class="source-item">
+                  <span class="source-category">${source.category || ''}</span>
+                  <span>${source.filename || source.name || ''}</span>
+                </div>
+              `;
+            } else {
+              // source가 문자열인 경우 (RAG 응답)
+              sourcesHtml += `
+                <div class="source-item">
+                  <span>${source}</span>
+                </div>
+              `;
+            }
           });
           sourcesHtml += '</div>';
         }
-        
+
         let feedbackHtml = '';
         if (!options.isError && options.messageId) {
           feedbackHtml = `
@@ -1164,7 +1261,7 @@
             </div>
           `;
         }
-        
+
         messageDiv.innerHTML = `
           <div class="avatar">🤖</div>
           <div class="message-content">
@@ -1172,15 +1269,16 @@
             ${sourcesHtml}
             <div class="message-meta">
               <span>${time}</span>
+              ${ragIndicatorHtml}
               ${confidenceBadge}
             </div>
             ${feedbackHtml}
           </div>
         `;
       }
-      
+
       chatMessages.appendChild(messageDiv);
-      
+
       // 피드백 버튼에 이벤트 리스너 추가
       if (!options.isError && options.messageId) {
         const positiveBtn = messageDiv.querySelector('.feedback-btn.positive');
@@ -1211,17 +1309,16 @@
           });
         }
       }
-      
+
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // 타이핑 인디케이터
     function addTypingIndicator() {
       const chatMessages = document.getElementById('chatMessages');
       const typingDiv = document.createElement('div');
       typingDiv.className = 'message bot';
       typingDiv.id = 'typing-indicator-' + Date.now();
-      
+
       typingDiv.innerHTML = `
         <div class="avatar">🤖</div>
         <div class="message-content">
@@ -1232,10 +1329,10 @@
           </div>
         </div>
       `;
-      
+
       chatMessages.appendChild(typingDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight;
-      
+
       return typingDiv.id;
     }
 
@@ -1249,15 +1346,13 @@
     // ==================== 피드백 ====================
     function giveFeedback(messageId, question, feedback) {
       console.log('피드백 버튼 클릭:', feedback);
-      
+
       pendingFeedback = { messageId, question, feedback };
       currentRating = 0;
-      
-      // 별점 초기화
+
       document.querySelectorAll('.star').forEach(star => star.classList.remove('active'));
       document.getElementById('feedbackComment').value = '';
-      
-      // 모달 열기
+
       document.getElementById('feedbackModal').classList.add('active');
     }
 
@@ -1278,14 +1373,12 @@
 
       const comment = document.getElementById('feedbackComment').value.trim();
 
-      // 코멘트 길이 검증
       if (comment.length > VALIDATION_CONFIG.MAX_COMMENT_LENGTH) {
         alert(`의견은 최대 ${VALIDATION_CONFIG.MAX_COMMENT_LENGTH}자까지 입력 가능합니다.\n현재: ${comment.length}자`);
         return;
       }
 
       try {
-        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'feedback');
         formData.append('sessionId', sessionId);
@@ -1329,20 +1422,17 @@
       const email = document.getElementById('escalationEmail').value.trim();
       const phone = document.getElementById('escalationPhone').value.trim();
 
-      // 이메일 검증
       if (!email) {
         alert('이메일을 입력해주세요.');
         return;
       }
 
-      // 이메일 형식 검증
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         alert('올바른 이메일 주소를 입력해주세요.');
         return;
       }
 
-      // 전화번호 검증 (선택사항이므로 입력된 경우만)
       if (phone) {
         const phoneRegex = /^01[0-9]-?\d{3,4}-?\d{4}$/;
         if (!phoneRegex.test(phone)) {
@@ -1352,7 +1442,6 @@
       }
 
       try {
-        // ⭐ URLSearchParams 사용 + 재시도 로직
         const formData = new URLSearchParams();
         formData.append('action', 'escalate');
         formData.append('sessionId', sessionId);
@@ -1387,74 +1476,52 @@
     }
 
     // ==================== 유틸리티 ====================
-
-    // HTML 이스케이프 (XSS 방지)
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
     }
 
-    // 마크다운을 HTML로 변환 (보안 강화 버전)
     function parseMarkdown(text) {
       if (!text) return '';
 
-      // 1. 코드 블록과 인라인 코드를 먼저 추출하여 보호
       const codeBlocks = [];
       const inlineCodes = [];
 
-      // 코드 블록 임시 저장 및 플레이스홀더 삽입
       let html = text.replace(/```([\s\S]*?)```/g, function(match, code) {
         const index = codeBlocks.length;
         codeBlocks.push(escapeHtml(code.trim()));
         return `___CODEBLOCK_${index}___`;
       });
 
-      // 인라인 코드 임시 저장 및 플레이스홀더 삽입
       html = html.replace(/`([^`]+)`/g, function(match, code) {
         const index = inlineCodes.length;
         inlineCodes.push(escapeHtml(code));
         return `___INLINECODE_${index}___`;
       });
 
-      // 2. 나머지 텍스트 HTML 이스케이프 (XSS 방지)
       html = html.split('\n').map(line => {
-        // 플레이스홀더가 있는 라인은 보존
         if (line.includes('___CODEBLOCK_') || line.includes('___INLINECODE_')) {
           return line;
         }
         return escapeHtml(line);
       }).join('\n');
 
-      // 3. 마크다운 변환
-
-      // 헤더 (###, ##, #) - 순서 중요!
       html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-      // 볼드 (**) - 이스케이프된 * 복원 후 처리
       html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-      // 이탤릭 (*)
       html = html.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
-
-      // 링크 [텍스트](URL) - URL은 검증 필요
       html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
-        // URL 검증 (http, https만 허용)
         if (url.match(/^https?:\/\//i)) {
           return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
         }
-        return text; // 유효하지 않은 URL은 텍스트만 표시
+        return text;
       });
 
-      // 번호 리스트 (1. 2. 3.)
       html = html.replace(/^\d+\.\s+(.+)$/gm, '<li data-type="numbered">$1</li>');
-
-      // 일반 리스트 (-, *)
       html = html.replace(/^[-•]\s+(.+)$/gm, '<li data-type="bullet">$1</li>');
 
-      // 4. 연속된 li 항목을 ul/ol로 그룹화
       const lines = html.split('\n');
       const result = [];
       let inList = false;
@@ -1468,23 +1535,19 @@
         if (isNumberedItem || isBulletItem) {
           const currentType = isNumberedItem ? 'numbered' : 'bullet';
 
-          // 리스트 시작 또는 타입 변경
           if (!inList) {
             result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
             inList = true;
             listType = currentType;
           } else if (listType !== currentType) {
-            // 리스트 타입이 변경되면 이전 리스트 닫고 새로 시작
             result.push(listType === 'numbered' ? '</ol>' : '</ul>');
             result.push(currentType === 'numbered' ? '<ol>' : '<ul>');
             listType = currentType;
           }
 
-          // data-type 속성 제거하고 li만 추가
           result.push(line.replace(' data-type="numbered"', '').replace(' data-type="bullet"', ''));
 
         } else {
-          // 리스트가 아닌 라인
           if (inList) {
             result.push(listType === 'numbered' ? '</ol>' : '</ul>');
             inList = false;
@@ -1494,40 +1557,33 @@
         }
       }
 
-      // 마지막 리스트 닫기
       if (inList) {
         result.push(listType === 'numbered' ? '</ol>' : '</ul>');
       }
 
       html = result.join('\n');
 
-      // 5. 코드 블록 복원
       html = html.replace(/___CODEBLOCK_(\d+)___/g, function(match, index) {
         return `<pre><code>${codeBlocks[index]}</code></pre>`;
       });
 
-      // 6. 인라인 코드 복원
       html = html.replace(/___INLINECODE_(\d+)___/g, function(match, index) {
         return `<code>${inlineCodes[index]}</code>`;
       });
 
-      // 7. 줄바꿈 처리
       html = html.replace(/\n\n+/g, '</p><p>');
       html = html.replace(/\n/g, '<br>');
 
-      // 8. 단락으로 감싸기 (태그로 시작하지 않는 경우)
       if (!html.trim().startsWith('<')) {
         html = '<p>' + html + '</p>';
       }
 
-      // 9. 빈 단락 제거
       html = html.replace(/<p><\/p>/g, '');
       html = html.replace(/<p>\s*<br>\s*<\/p>/g, '');
 
       return html;
     }
 
-    // 모달 외부 클릭 시 닫기
     window.onclick = function(event) {
       if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
