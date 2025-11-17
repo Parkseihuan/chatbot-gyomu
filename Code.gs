@@ -43,10 +43,10 @@ const CONFIG = {
   // 교무지원과 연락처 정보 (실제 정보로 수정 필요!)
   ORG_INFO: {
     NAME: '용인대학교 교무지원과',
-    PHONE: '031-8020-2114',  // TODO: 실제 전화번호로 수정
-    EMAIL: 'gyomu@yongin.ac.kr',  // TODO: 실제 이메일로 수정
-    LOCATION: '본관 1층 교무지원과',  // TODO: 실제 위치로 수정
-    WORKING_HOURS: '평일 09:00~18:00 (점심시간 12:00~13:00)'
+    PHONE: '031-8020-2992 또는 031-8020-2544',  // TODO: 실제 전화번호로 수정
+    EMAIL: 'psh@yongin.ac.kr',  // TODO: 실제 이메일로 수정
+    LOCATION: '본관 3층 교무지원과',  // TODO: 실제 위치로 수정
+    WORKING_HOURS: '평일 09:00~17:00 (점심시간 12:00~13:00)'
   }
 };
 
