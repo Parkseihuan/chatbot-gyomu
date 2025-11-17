@@ -276,13 +276,14 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
   }
 }
 
-// QA_이력_상세에서 질문 빈도를 집계하여 Top N 추출
+// QA_이력에서 질문 빈도 + 신뢰도를 복합 집계하여 Top N 추출
 function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMIT) {
   try {
-    const qaSheet = spreadsheet.getSheetByName('QA_이력_상세');
+    // QA_이력 시트 사용 (신뢰도 포함)
+    const qaSheet = spreadsheet.getSheetByName('QA_이력');
 
     if (!qaSheet) {
-      Logger.log('QA_이력_상세 시트 없음');
+      Logger.log('QA_이력 시트 없음');
       return null;
     }
 
@@ -290,19 +291,20 @@ function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMI
 
     // 최소 2행 이상 있어야 함 (헤더 + 데이터 1개 이상)
     if (data.length < 2) {
-      Logger.log('QA_이력_상세에 데이터 없음');
+      Logger.log('QA_이력에 데이터 없음');
       return null;
     }
 
-    // 질문별 빈도 집계 (질문 정규화: 소문자, 공백 제거)
-    const questionCounts = {};
-    const questionDetails = {}; // 원본 질문과 답변 저장
+    // 질문별 빈도 및 신뢰도 집계
+    const questionStats = {};
+    const questionDetails = {};
 
     // 헤더 제외하고 집계 (1행부터)
-    // QA_이력_상세 컬럼: [타임스탬프, 세션ID, 이메일, 역할, 질문, 의도, 엔티티, 문서, 답변, ...]
+    // QA_이력 컬럼: [타임스탬프, 세션ID, 질문, 답변, 출처, 출처수, 신뢰도]
     for (let i = 1; i < data.length; i++) {
-      const question = data[i][4]; // 5번째 컬럼: 질문
-      const answer = data[i][8];   // 9번째 컬럼: 답변
+      const question = data[i][2]; // 3번째 컬럼: 질문
+      const answer = data[i][3];   // 4번째 컬럼: 답변
+      const confidence = parseFloat(data[i][6]) || 0.5;  // 7번째 컬럼: 신뢰도
 
       if (!question || typeof question !== 'string') continue;
 
@@ -325,7 +327,8 @@ function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMI
       const validKeywords = ['재임용', '휴직', '출장', '복명', '승진', '임용', '연구년',
                              '강의', '학점', '성적', '규정', '절차', '신청', '제출',
                              '심사', '평가', '기준', '자격', '요건', '서류', '양식',
-                             '교원', '교수', '학과', '학부', '대학원', '학기', '학년'];
+                             '교원', '교수', '학과', '학부', '대학원', '학기', '학년',
+                             '정년', '퇴직', '비전임', '전임', '채용'];
 
       const hasValidKeyword = validKeywords.some(keyword => normalizedQuestion.includes(keyword));
 
@@ -341,37 +344,58 @@ function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMI
 
       // ========== FAQ 필터링 끝 ==========
 
-      // 빈도 증가
-      if (!questionCounts[normalizedQuestion]) {
-        questionCounts[normalizedQuestion] = 0;
+      // 통계 집계
+      if (!questionStats[normalizedQuestion]) {
+        questionStats[normalizedQuestion] = {
+          count: 0,
+          totalConfidence: 0
+        };
         questionDetails[normalizedQuestion] = {
           original: question.trim(),
           answer: answer || '답변 준비 중입니다.'
         };
       }
-      questionCounts[normalizedQuestion]++;
+      questionStats[normalizedQuestion].count++;
+      questionStats[normalizedQuestion].totalConfidence += confidence;
     }
 
-    // 빈도순으로 정렬
-    const sortedQuestions = Object.keys(questionCounts).sort(function(a, b) {
-      return questionCounts[b] - questionCounts[a];
+    // 복합 점수 계산 및 정렬
+    // 점수 = 빈도 * 평균신뢰도 (빈도와 신뢰도 모두 고려)
+    const scoredQuestions = Object.keys(questionStats).map(function(q) {
+      const stats = questionStats[q];
+      const avgConfidence = stats.totalConfidence / stats.count;
+      const compositeScore = stats.count * avgConfidence;
+
+      return {
+        normalized: q,
+        count: stats.count,
+        avgConfidence: avgConfidence,
+        score: compositeScore
+      };
+    });
+
+    // 복합 점수순으로 정렬
+    scoredQuestions.sort(function(a, b) {
+      return b.score - a.score;
     });
 
     // 상위 N개 추출
     const topFAQs = [];
-    for (let i = 0; i < Math.min(limit, sortedQuestions.length); i++) {
-      const normalizedQ = sortedQuestions[i];
-      const details = questionDetails[normalizedQ];
+    for (let i = 0; i < Math.min(limit, scoredQuestions.length); i++) {
+      const scored = scoredQuestions[i];
+      const details = questionDetails[scored.normalized];
 
       topFAQs.push({
         question: details.original,
         answer: details.answer,
         category: '자주 묻는 질문',
-        count: questionCounts[normalizedQ]  // 질문 횟수 포함
+        count: scored.count,
+        avgConfidence: Math.round(scored.avgConfidence * 100) / 100,
+        score: Math.round(scored.score * 100) / 100
       });
     }
 
-    Logger.log('✅ QA_이력_상세에서 Top ' + topFAQs.length + '개 추출 완료');
+    Logger.log('✅ QA_이력에서 Top ' + topFAQs.length + '개 추출 완료 (빈도+신뢰도 복합 기준)');
     return topFAQs;
 
   } catch (error) {
@@ -380,33 +404,33 @@ function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMI
   }
 }
 
-// 샘플 FAQ 데이터
+// 샘플 FAQ 데이터 (교원인사규정 기반)
 function getSampleFAQs(limit = CONFIG.SAMPLE_FAQ_COUNT) {
   const allFaqs = [
     {
-      question: '재임용 심사 기준은 무엇인가요?',
-      answer: '재임용 심사는 교육, 연구, 봉사 영역을 종합적으로 평가합니다.',
+      question: '승진임용에 필요한 최소 재직 기간은 어떻게 되나요?',
+      answer: '교원인사규정에 따른 승진임용 최소 재직 기간:\n\n• 조교수 → 부교수: 4~6년 (임용 시기에 따라 상이)\n• 부교수 → 교수: 5~7년 (임용 시기에 따라 상이)\n\n※ 징계처분 또는 직위해제 기간 중에는 승진심사 대상에서 제외됩니다.',
       category: '인사'
     },
     {
-      question: '휴직 신청은 어떻게 하나요?',
-      answer: '휴직 신청서를 작성하여 소속 학과를 거쳐 교무처에 제출하시면 됩니다.',
+      question: '재임용 심사는 언제, 어떻게 진행되나요?',
+      answer: '재임용 심사 절차:\n\n1. 임용기간 만료 4개월 전: 대학에서 교원에게 통보\n2. 통보 후 15일 이내: 교원이 재임용 심사 신청\n3. 심사 기준: 교육, 연구, 학생지도, 관련 법규 준수 여부\n\n※ 재임용 거부 시 이의신청 절차가 있습니다.',
       category: '인사'
     },
     {
-      question: '연구년 신청 자격은 어떻게 되나요?',
-      answer: '전임교원으로 6년 이상 재직하신 경우 신청 가능합니다.',
-      category: '연구'
-    },
-    {
-      question: '승진임용 절차가 궁금합니다',
-      answer: '승진임용은 연구, 교육, 봉사 실적을 기반으로 심사위원회에서 평가합니다.',
+      question: '신규 교원 채용 절차는 어떻게 되나요?',
+      answer: '신규 교원 임용은 3단계 심사를 거칩니다:\n\n1. 기초심사: 자격요건 확인\n2. 전공심사: 학문적 우수성 평가\n3. 대면심사: 자격 적합성 평가\n\n※ 모집공고는 임용 15일 전에 공고되며, 학기 초에 임용됩니다.\n※ 동일 대학 학사 출신자가 채용단위의 2/3를 초과할 수 없습니다.',
       category: '인사'
     },
     {
-      question: '출장 복명서는 언제까지 제출하나요?',
-      answer: '출장 종료 후 7일 이내에 복명서를 제출해주시기 바랍니다.',
-      category: '행정'
+      question: '교원의 정년은 몇 세인가요?',
+      answer: '교원인사규정에 따른 정년:\n\n• 정년 나이: 만 65세\n• 명예퇴직: 20년 이상 재직 시 신청 가능\n\n정년퇴직은 정년이 도래하는 학기말에 시행됩니다.',
+      category: '인사'
+    },
+    {
+      question: '비전임교원의 종류는 무엇이 있나요?',
+      answer: '교원인사규정상 비전임교원 종류:\n\n• 연구강의교원\n• 강의중심교원\n• 실기교원\n• 연구중심교원\n• 산학협력교원\n\n각 직종별 임용 자격과 계약 조건이 다르며, 세부사항은 교원인사규정을 참고하시기 바랍니다.',
+      category: '인사'
     }
   ];
 
@@ -458,8 +482,8 @@ function handleChat(params) {
     // 2. Gemini로 답변 생성
     const answer = generateAnswer(question, documents, config);
 
-    // 3. 로그 저장 (원본 질문만 저장 - FAQ 오염 방지)
-    logQA(sessionId, originalQuestion, answer.text, answer.sources, config);
+    // 3. 로그 저장 (원본 질문만 저장 - FAQ 오염 방지, 신뢰도 포함)
+    logQA(sessionId, originalQuestion, answer.text, answer.sources, config, answer.confidence);
 
     return {
       success: true,
@@ -880,7 +904,7 @@ function checkSensitiveInfo(text) {
 }
 
 // ==================== QA 로그 저장 ====================
-function logQA(sessionId, question, answer, sources, config) {
+function logQA(sessionId, question, answer, sources, config, confidence = 0.5) {
   try {
     if (!config.spreadsheetId) return;
 
@@ -897,10 +921,11 @@ function logQA(sessionId, question, answer, sources, config) {
       question,
       answer,
       sourcesText,
-      sources.length
+      sources.length,
+      confidence  // 신뢰도 추가
     ]);
 
-    Logger.log('✅ QA 로그 저장 완료');
+    Logger.log('✅ QA 로그 저장 완료 (신뢰도: ' + confidence + ')');
 
   } catch (error) {
     Logger.log('QA 로그 저장 실패: ' + error.toString());
