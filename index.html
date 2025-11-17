@@ -1248,6 +1248,27 @@
               if (ragSources.length === 1) {
                 console.warn('⚠️ 경고: 문서가 1개만 검색됨. RAG API vector search 확인 필요');
               }
+
+              // ⭐ RAG 컨텍스트 관련성 검사
+              if (usedRAG) {
+                const questionKeywords = extractKeywordsFromQuestion(question);
+                const contextLower = ragContext.toLowerCase();
+                const relevantKeywordCount = questionKeywords.filter(kw =>
+                  contextLower.includes(kw.toLowerCase())
+                ).length;
+
+                console.log('=== RAG 관련성 검사 ===');
+                console.log('질문 키워드:', questionKeywords);
+                console.log('관련 키워드 수:', relevantKeywordCount, '/', questionKeywords.length);
+
+                // 키워드 매칭이 50% 미만이면 RAG 결과를 신뢰하지 않음
+                if (questionKeywords.length > 0 && relevantKeywordCount < questionKeywords.length * 0.3) {
+                  console.warn('⚠️ RAG 컨텍스트가 질문과 관련성이 낮음. RAG 건너뜀');
+                  usedRAG = false;
+                  ragContext = '';
+                  ragSources = [];
+                }
+              }
             } else {
               console.warn('RAG API 오류:', ragResponse.status);
             }
@@ -1270,6 +1291,7 @@
         const formData = new URLSearchParams();
         formData.append('action', 'chat');
         formData.append('question', finalQuestion);
+        formData.append('originalQuestion', question);  // 원본 질문 별도 전송 (FAQ 저장용)
         formData.append('sessionId', sessionId);
         formData.append('userRole', 'faculty');
         formData.append('useRAG', usedRAG ? 'true' : 'false');  // RAG 사용 여부 전달
@@ -1661,6 +1683,43 @@
     }
 
     // ==================== 유틸리티 ====================
+    // 질문에서 주요 키워드 추출 (RAG 관련성 검사용)
+    function extractKeywordsFromQuestion(question) {
+      const keywords = [];
+
+      // 교무/학사 관련 키워드 목록
+      const domainKeywords = [
+        '재임용', '휴직', '출장', '복명', '복명서', '승진', '임용', '연구년',
+        '강의', '학점', '성적', '규정', '절차', '신청', '제출', '심사', '평가',
+        '기준', '자격', '요건', '서류', '양식', '교원', '교수', '학과', '학부',
+        '대학원', '학기', '학년', '연구비', '학회', '논문', '급여', '수당',
+        '휴가', '병가', '육아휴직', '보직', '학장', '처장', '임기'
+      ];
+
+      // 질문에서 도메인 키워드 추출
+      domainKeywords.forEach(kw => {
+        if (question.includes(kw)) {
+          keywords.push(kw);
+        }
+      });
+
+      // 명사 추출 (간단한 규칙 기반)
+      // 한글 2자 이상 단어 중 조사/어미 제외
+      const words = question.replace(/[?!.,~]/g, '').split(/\s+/);
+      words.forEach(word => {
+        // 이미 추가된 키워드가 아니고, 2자 이상이며, 조사가 아닌 경우
+        if (word.length >= 2 && !keywords.includes(word)) {
+          // 간단한 조사 제거
+          const cleanWord = word.replace(/(은|는|이|가|을|를|에|의|으로|로|와|과|에서|까지|부터)$/g, '');
+          if (cleanWord.length >= 2 && !keywords.includes(cleanWord)) {
+            keywords.push(cleanWord);
+          }
+        }
+      });
+
+      return keywords.slice(0, 10); // 최대 10개 키워드
+    }
+
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;

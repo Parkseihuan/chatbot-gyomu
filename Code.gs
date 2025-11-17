@@ -309,7 +309,37 @@ function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMI
       // 질문 정규화 (대소문자 통일, 앞뒤 공백 제거)
       const normalizedQuestion = question.trim().toLowerCase();
 
-      if (normalizedQuestion.length < 2) continue; // 너무 짧은 질문 제외
+      // ========== FAQ 필터링 규칙 ==========
+      // 1. 너무 짧은 질문 제외 (5자 미만)
+      if (normalizedQuestion.length < 5) continue;
+
+      // 2. 너무 긴 질문 제외 (RAG 컨텍스트 포함 가능성)
+      if (normalizedQuestion.length > 200) continue;
+
+      // 3. RAG 컨텍스트가 포함된 질문 제외
+      if (normalizedQuestion.includes('다음 문서를 참고') ||
+          normalizedQuestion.includes('[문서 1]') ||
+          normalizedQuestion.includes('[문서 2]')) continue;
+
+      // 4. 교무/학사 관련 키워드가 없는 질문 제외
+      const validKeywords = ['재임용', '휴직', '출장', '복명', '승진', '임용', '연구년',
+                             '강의', '학점', '성적', '규정', '절차', '신청', '제출',
+                             '심사', '평가', '기준', '자격', '요건', '서류', '양식',
+                             '교원', '교수', '학과', '학부', '대학원', '학기', '학년'];
+
+      const hasValidKeyword = validKeywords.some(keyword => normalizedQuestion.includes(keyword));
+
+      // 5. 일반적인 질문 형태인지 확인 (물음표 또는 ~요, ~까요 등으로 끝남)
+      const isQuestionFormat = normalizedQuestion.includes('?') ||
+                               normalizedQuestion.endsWith('요') ||
+                               normalizedQuestion.endsWith('까요') ||
+                               normalizedQuestion.endsWith('나요') ||
+                               normalizedQuestion.endsWith('습니다');
+
+      // 유효한 키워드가 있거나 질문 형태인 경우만 포함
+      if (!hasValidKeyword && !isQuestionFormat) continue;
+
+      // ========== FAQ 필터링 끝 ==========
 
       // 빈도 증가
       if (!questionCounts[normalizedQuestion]) {
@@ -387,12 +417,14 @@ function getSampleFAQs(limit = CONFIG.SAMPLE_FAQ_COUNT) {
 function handleChat(params) {
   try {
     const question = params.question || '';
+    const originalQuestion = params.originalQuestion || question;  // 원본 질문 (RAG 컨텍스트 없는 버전)
     const sessionId = params.sessionId || '';
     const userRole = params.userRole || 'student';
     const useRAG = params.useRAG === 'true';  // RAG 사용 여부 확인
 
     Logger.log('=== handleChat 시작 ===');
-    Logger.log('Question: ' + question);
+    Logger.log('Question: ' + question.substring(0, 100) + (question.length > 100 ? '...' : ''));
+    Logger.log('Original Question: ' + originalQuestion);
     Logger.log('SessionId: ' + sessionId);
     Logger.log('useRAG: ' + useRAG);
 
@@ -403,8 +435,8 @@ function handleChat(params) {
       };
     }
 
-    // 민감정보 필터링
-    const sensitiveCheck = checkSensitiveInfo(question);
+    // 민감정보 필터링 (원본 질문 기준)
+    const sensitiveCheck = checkSensitiveInfo(originalQuestion);
     if (!sensitiveCheck.safe) {
       return {
         success: false,
@@ -416,7 +448,7 @@ function handleChat(params) {
     const config = getConfig();
 
     // 1. 문서 검색 (RAG 사용 시 건너뜀 - 중복 방지)
-    const documents = useRAG ? [] : searchDocuments(question, config);
+    const documents = useRAG ? [] : searchDocuments(originalQuestion, config);
     if (useRAG) {
       Logger.log('RAG 사용 중 - Apps Script 문서 검색 건너뜀');
     } else {
@@ -426,8 +458,8 @@ function handleChat(params) {
     // 2. Gemini로 답변 생성
     const answer = generateAnswer(question, documents, config);
 
-    // 3. 로그 저장
-    logQA(sessionId, question, answer.text, answer.sources, config);
+    // 3. 로그 저장 (원본 질문만 저장 - FAQ 오염 방지)
+    logQA(sessionId, originalQuestion, answer.text, answer.sources, config);
 
     return {
       success: true,
