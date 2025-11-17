@@ -1,11 +1,18 @@
 /**
- * 용인대학교 교무지원과 AI 챗봇 - Apps Script (CORS 완전 해결)
- * v1.3 - 코드 품질 개선, 재시도 로직, 상수 정의
+ * 용인대학교 교무지원과 AI 챗봇 - Apps Script
+ * v2.1 - Hallucination 방지 및 FAQ 컬럼 구조 수정
  *
- * 주요 변경사항:
+ * 주요 변경사항 (v2.1):
+ * - FAQ 시트 컬럼 구조 수정: [순위, 질문, 답변, 카테고리, 조회수, 평균평점]
+ * - getTopQuestionsFromHistory: QA_이력_상세 시트 지원 (15개 컬럼 구조)
+ * - Hallucination 방지: temperature 0.7 → 0.3
+ * - 모델 변경: gemini-2.5-pro → gemini-2.0-flash-exp (더 빠르고 효율적)
+ * - RAG 컨텍스트 감지 및 엄격한 답변 규칙 적용
+ * - 문서 기반 답변 시 "문서에 없으면 추측 금지" 명시적 지시
+ *
+ * 이전 버전 (v1.3):
  * - doGet(): FAQ 등 조회용 (preflight 없음)
  * - doPost(): 채팅, 피드백 등 (application/x-www-form-urlencoded)
- * - doOptions() 제거 (불필요)
  * - 상수 정의 및 매직 넘버 제거
  * - 에러 처리 개선
  */
@@ -21,9 +28,9 @@ const CONFIG = {
   MAX_SEARCH_KEYWORDS: 10,
 
   // Gemini API 설정
-  GEMINI_MODEL: 'gemini-2.5-pro',
-  GEMINI_TEMPERATURE: 0.7,
-  GEMINI_MAX_TOKENS: 1000,
+  GEMINI_MODEL: 'gemini-2.0-flash-exp',  // Hallucination 방지를 위해 gemini-2.5-pro에서 변경
+  GEMINI_TEMPERATURE: 0.3,  // Hallucination 방지를 위해 0.7 → 0.3으로 낮춤
+  GEMINI_MAX_TOKENS: 1500,  // 더 상세한 답변을 위해 1000 → 1500으로 증가
 
   // 기본 이메일
   DEFAULT_ADMIN_EMAIL: 'admin@university.ac.kr',
@@ -193,11 +200,26 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (SPREADSHEET_ID 미설정)'
+        message: '샘플 FAQ (SPREADSHEET_ID 미설정)',
+        debug: 'SPREADSHEET_ID not configured'
       };
     }
 
     const ss = SpreadsheetApp.openById(config.spreadsheetId);
+
+    // 1단계: QA_이력에서 실제 질문 빈도 집계
+    const topQuestions = getTopQuestionsFromHistory(ss, limit);
+
+    if (topQuestions && topQuestions.length > 0) {
+      Logger.log('✅ 실제 질문 빈도 기반 Top ' + topQuestions.length + '개 반환');
+      return {
+        success: true,
+        faqs: topQuestions,
+        source: 'real-data'
+      };
+    }
+
+    // 2단계: QA_이력이 없으면 FAQ 시트에서 가져오기
     const sheet = ss.getSheetByName('자주묻는질문_FAQ');
 
     if (!sheet) {
@@ -205,7 +227,8 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (시트 없음)'
+        message: '샘플 FAQ (시트 없음)',
+        debug: 'Sheet not found'
       };
     }
 
@@ -213,12 +236,13 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
     const faqs = [];
 
     // 헤더 제외하고 데이터 읽기
+    // 컬럼 구조: [순위, 질문, 답변, 카테고리, 조회수, 평균평점]
     for (let i = 1; i < data.length && faqs.length < limit; i++) {
-      if (data[i][0]) { // 질문이 있으면
+      if (data[i][1]) { // 질문 컬럼 (두 번째 컬럼)이 있으면
         faqs.push({
-          question: data[i][0],
-          answer: data[i][1] || '',
-          category: data[i][2] || '일반'
+          question: data[i][1],  // 두 번째 컬럼: 질문
+          answer: data[i][2] || '',  // 세 번째 컬럼: 답변
+          category: data[i][3] || '일반'  // 네 번째 컬럼: 카테고리
         });
       }
     }
@@ -229,14 +253,16 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
       return {
         success: true,
         faqs: getSampleFAQs(limit),
-        message: '샘플 FAQ (데이터 없음)'
+        message: '샘플 FAQ (데이터 없음)',
+        debug: 'No data in sheet'
       };
     }
 
-    Logger.log('✅ FAQ ' + faqs.length + '개 반환');
+    Logger.log('✅ FAQ 시트에서 ' + faqs.length + '개 반환');
     return {
       success: true,
-      faqs: faqs
+      faqs: faqs,
+      source: 'faq-sheet'
     };
 
   } catch (error) {
@@ -244,8 +270,83 @@ function getFAQ(limit = CONFIG.DEFAULT_FAQ_LIMIT) {
     return {
       success: true,
       faqs: getSampleFAQs(limit),
-      message: '샘플 FAQ (오류 발생)'
+      message: '샘플 FAQ (오류 발생)',
+      debug: error.toString()
     };
+  }
+}
+
+// QA_이력_상세에서 질문 빈도를 집계하여 Top N 추출
+function getTopQuestionsFromHistory(spreadsheet, limit = CONFIG.DEFAULT_FAQ_LIMIT) {
+  try {
+    const qaSheet = spreadsheet.getSheetByName('QA_이력_상세');
+
+    if (!qaSheet) {
+      Logger.log('QA_이력_상세 시트 없음');
+      return null;
+    }
+
+    const data = qaSheet.getDataRange().getValues();
+
+    // 최소 2행 이상 있어야 함 (헤더 + 데이터 1개 이상)
+    if (data.length < 2) {
+      Logger.log('QA_이력_상세에 데이터 없음');
+      return null;
+    }
+
+    // 질문별 빈도 집계 (질문 정규화: 소문자, 공백 제거)
+    const questionCounts = {};
+    const questionDetails = {}; // 원본 질문과 답변 저장
+
+    // 헤더 제외하고 집계 (1행부터)
+    // QA_이력_상세 컬럼: [타임스탬프, 세션ID, 이메일, 역할, 질문, 의도, 엔티티, 문서, 답변, ...]
+    for (let i = 1; i < data.length; i++) {
+      const question = data[i][4]; // 5번째 컬럼: 질문
+      const answer = data[i][8];   // 9번째 컬럼: 답변
+
+      if (!question || typeof question !== 'string') continue;
+
+      // 질문 정규화 (대소문자 통일, 앞뒤 공백 제거)
+      const normalizedQuestion = question.trim().toLowerCase();
+
+      if (normalizedQuestion.length < 2) continue; // 너무 짧은 질문 제외
+
+      // 빈도 증가
+      if (!questionCounts[normalizedQuestion]) {
+        questionCounts[normalizedQuestion] = 0;
+        questionDetails[normalizedQuestion] = {
+          original: question.trim(),
+          answer: answer || '답변 준비 중입니다.'
+        };
+      }
+      questionCounts[normalizedQuestion]++;
+    }
+
+    // 빈도순으로 정렬
+    const sortedQuestions = Object.keys(questionCounts).sort(function(a, b) {
+      return questionCounts[b] - questionCounts[a];
+    });
+
+    // 상위 N개 추출
+    const topFAQs = [];
+    for (let i = 0; i < Math.min(limit, sortedQuestions.length); i++) {
+      const normalizedQ = sortedQuestions[i];
+      const details = questionDetails[normalizedQ];
+
+      topFAQs.push({
+        question: details.original,
+        answer: details.answer,
+        category: '자주 묻는 질문',
+        count: questionCounts[normalizedQ]  // 질문 횟수 포함
+      });
+    }
+
+    Logger.log('✅ QA_이력_상세에서 Top ' + topFAQs.length + '개 추출 완료');
+    return topFAQs;
+
+  } catch (error) {
+    Logger.log('getTopQuestionsFromHistory 오류: ' + error.toString());
+    return null;
   }
 }
 
@@ -420,6 +521,9 @@ function generateAnswer(question, documents, config) {
       };
     }
 
+    // RAG 컨텍스트 감지 (프론트엔드가 RAG 컨텍스트를 질문에 포함시킴)
+    const hasRAGContext = question.includes('다음 문서를 참고하여');
+
     // 문서 컨텍스트 구성
     let context = '';
     if (documents.length > 0) {
@@ -429,8 +533,30 @@ function generateAnswer(question, documents, config) {
       });
     }
 
-    // Gemini API 호출
-    const prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+    // Gemini API 호출 - Hallucination 방지를 위한 강화된 프롬프트
+    let prompt;
+
+    if (hasRAGContext) {
+      // RAG 컨텍스트가 있는 경우: 반드시 문서 내용만 사용
+      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+
+⚠️ **중요 지침**:
+1. 아래 제공된 문서 내용만을 기반으로 답변하세요
+2. 문서에 없는 내용은 절대 추측하거나 만들어내지 마세요
+3. 확실하지 않으면 "제공된 문서에서 해당 정보를 찾을 수 없습니다"라고 답변하세요
+4. 답변할 때 문서의 구체적인 내용을 인용하세요
+
+${question}
+
+답변 형식:
+- 문서 내용을 기반으로 한 명확한 답변
+- 관련 절차나 규정이 있다면 구체적으로 명시
+- 추가 정보가 필요하면 담당자 연락을 권유
+
+답변:`;
+    } else {
+      // 일반 모드: 기본 프롬프트
+      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
 다음 질문에 친절하고 정확하게 답변해주세요.
 
 질문: ${question}
@@ -441,7 +567,10 @@ ${context}
 2. 관련 규정이나 절차 안내
 3. 추가 문의가 필요한 경우 안내
 
+**주의**: 확실하지 않은 내용은 추측하지 말고, 담당자에게 문의하도록 안내하세요.
+
 답변:`;
+    }
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${config.geminiApiKey}`;
 
