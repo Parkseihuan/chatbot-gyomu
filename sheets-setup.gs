@@ -30,17 +30,14 @@ function createChatbotSheets() {
 
   Logger.log('=== 교무지원과 챗봇 스프레드시트 생성 시작 ===');
 
-  // 1. 문서_메타데이터 시트
-  createDocumentMetadataSheet(ss);
-
-  // 2. 자주묻는질문_FAQ 시트
+  // 1. 자주묻는질문_FAQ 시트
   createFAQSheet(ss);
 
-  // 3. QA_이력_상세 시트 (개선됨)
-  createQAHistoryDetailSheet(ss);
-
-  // 3.5. QA_이력 시트 (FAQ 복합 점수용)
+  // 2. QA_이력 시트 (FAQ 복합 점수용)
   createQAHistorySheet(ss);
+
+  // 3. QA_이력_상세 시트 (상세 로그)
+  createQAHistoryDetailSheet(ss);
 
   // 4. 피드백_상세 시트
   createFeedbackDetailSheet(ss);
@@ -51,14 +48,13 @@ function createChatbotSheets() {
   // 6. 민감정보_로그 시트
   createSensitiveInfoLogSheet(ss);
 
-  // 7. 검색_문서_매핑 시트 (신규)
-  createDocumentMappingSheet(ss);
-
-  // 8. 일별_통계 시트 (신규)
+  // 7. 일별_통계 시트
   createDailyStatsSheet(ss);
 
-  // 9. 대시보드_통계 시트
+  // 8. 대시보드_통계 시트
   createDashboardSheet(ss);
+
+  // 참고: 문서_메타데이터, 검색_문서_매핑은 Cloud Run RAG 사용으로 불필요
 
   Logger.log('=== 스프레드시트 생성 완료 ===');
 
@@ -66,17 +62,15 @@ function createChatbotSheets() {
   SpreadsheetApp.getUi().alert(
     '✅ 생성 완료!\n\n' +
     '다음 시트들이 생성되었습니다:\n' +
-    '1. 문서_메타데이터\n' +
-    '2. 자주묻는질문_FAQ\n' +
+    '1. 자주묻는질문_FAQ\n' +
+    '2. QA_이력 (FAQ 복합 점수용)\n' +
     '3. QA_이력_상세 (상세 로그)\n' +
-    '3.5. QA_이력 (FAQ 복합 점수용) ⭐신규\n' +
     '4. 피드백_상세\n' +
     '5. 에스컬레이션_티켓\n' +
     '6. 민감정보_로그\n' +
-    '7. 검색_문서_매핑\n' +
-    '8. 일별_통계\n' +
-    '9. 대시보드_통계\n\n' +
-    '각 시트에 헤더가 설정되었습니다.\n\n' +
+    '7. 일별_통계\n' +
+    '8. 대시보드_통계\n\n' +
+    '※ 문서 검색은 Cloud Run RAG 사용\n\n' +
     '⚠️ 중요: Code.gs의 CONFIG.ORG_INFO에서\n' +
     '교무지원과 연락처를 실제 정보로 수정하세요!'
   );

@@ -57,13 +57,8 @@ function getConfig() {
     spreadsheetId: props.getProperty('SPREADSHEET_ID'),
     geminiApiKey: props.getProperty('GEMINI_API_KEY'),
     adminEmail: props.getProperty('ADMIN_EMAIL') || CONFIG.DEFAULT_ADMIN_EMAIL,
-    escalationEmail: props.getProperty('ESCALATION_EMAIL') || CONFIG.DEFAULT_ESCALATION_EMAIL,
-    folders: {
-      '규정집': props.getProperty('FOLDER_규정집'),
-      '상위법': props.getProperty('FOLDER_상위법'),
-      '내부결재문서': props.getProperty('FOLDER_내부결재문서'),
-      'QA이력': props.getProperty('FOLDER_QA이력')
-    }
+    escalationEmail: props.getProperty('ESCALATION_EMAIL') || CONFIG.DEFAULT_ESCALATION_EMAIL
+    // 참고: 문서 검색은 Cloud Run RAG API가 담당 (Google Drive 폴더 설정 불필요)
   };
 }
 
@@ -480,13 +475,10 @@ function handleChat(params) {
 
     const config = getConfig();
 
-    // 1. 문서 검색 (RAG 사용 시 건너뜀 - 중복 방지)
-    const documents = useRAG ? [] : searchDocuments(originalQuestion, config);
-    if (useRAG) {
-      Logger.log('RAG 사용 중 - Apps Script 문서 검색 건너뜀');
-    } else {
-      Logger.log('일반 모드 - Apps Script 문서 검색 수행: ' + documents.length + '개');
-    }
+    // 1. 문서 검색은 Cloud Run RAG API가 담당
+    // 프론트엔드에서 RAG 컨텍스트를 question에 포함하여 전송
+    const documents = [];  // RAG API가 이미 문서를 검색했으므로 빈 배열
+    Logger.log('문서 검색: Cloud Run RAG API 사용 (useRAG=' + useRAG + ')');
 
     // 2. Gemini로 답변 생성
     const answer = generateAnswer(question, documents, config);
@@ -511,8 +503,12 @@ function handleChat(params) {
   }
 }
 
-// ==================== 문서 검색 ====================
+// ==================== 문서 검색 (DEPRECATED) ====================
+// ⚠️ 이 함수는 더 이상 사용되지 않습니다.
+// 문서 검색은 Cloud Run RAG API가 담당합니다.
+// 향후 버전에서 제거될 예정입니다.
 function searchDocuments(query, config) {
+  Logger.log('⚠️ searchDocuments는 deprecated됨. Cloud Run RAG API를 사용하세요.');
   const documents = [];
 
   try {
