@@ -39,6 +39,9 @@ function createChatbotSheets() {
   // 3. QA_이력_상세 시트 (개선됨)
   createQAHistoryDetailSheet(ss);
 
+  // 3.5. QA_이력 시트 (FAQ 복합 점수용)
+  createQAHistorySheet(ss);
+
   // 4. 피드백_상세 시트
   createFeedbackDetailSheet(ss);
 
@@ -65,15 +68,17 @@ function createChatbotSheets() {
     '다음 시트들이 생성되었습니다:\n' +
     '1. 문서_메타데이터\n' +
     '2. 자주묻는질문_FAQ\n' +
-    '3. QA_이력_상세 (개선됨)\n' +
+    '3. QA_이력_상세 (상세 로그)\n' +
+    '3.5. QA_이력 (FAQ 복합 점수용) ⭐신규\n' +
     '4. 피드백_상세\n' +
     '5. 에스컬레이션_티켓\n' +
     '6. 민감정보_로그\n' +
-    '7. 검색_문서_매핑 (신규)\n' +
-    '8. 일별_통계 (신규)\n' +
+    '7. 검색_문서_매핑\n' +
+    '8. 일별_통계\n' +
     '9. 대시보드_통계\n\n' +
-    '각 시트에 헤더가 설정되었습니다.\n' +
-    '이제 Apps Script 백엔드 코드를 배포하세요!'
+    '각 시트에 헤더가 설정되었습니다.\n\n' +
+    '⚠️ 중요: Code.gs의 CONFIG.ORG_INFO에서\n' +
+    '교무지원과 연락처를 실제 정보로 수정하세요!'
   );
 }
 
@@ -337,6 +342,67 @@ function createQAHistoryDetailSheet(ss) {
   sheet.getRange(2, 1, 1, headers.length).setBackground('#fff3cd');
 
   Logger.log('  - 헤더 및 샘플 데이터 설정 완료');
+}
+
+// ============================================
+// 3.5. QA_이력 시트 (FAQ 복합 점수 계산용)
+// ============================================
+function createQAHistorySheet(ss) {
+  let sheet = ss.getSheetByName('QA_이력');
+
+  if (sheet) {
+    Logger.log('QA_이력 시트가 이미 존재합니다.');
+  } else {
+    sheet = ss.insertSheet('QA_이력');
+    Logger.log('QA_이력 시트 생성 완료');
+  }
+
+  // Code.gs의 logQA 함수에서 사용하는 컬럼 구조
+  const headers = [
+    '타임스탬프',
+    '세션ID',
+    '질문',
+    '답변',
+    '출처',
+    '출처수',
+    '신뢰도'
+  ];
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setBackground('#ff9800');
+  headerRange.setFontColor('#ffffff');
+  headerRange.setFontWeight('bold');
+  headerRange.setHorizontalAlignment('center');
+
+  sheet.setColumnWidth(1, 150);  // 타임스탬프
+  sheet.setColumnWidth(2, 200);  // 세션ID
+  sheet.setColumnWidth(3, 400);  // 질문
+  sheet.setColumnWidth(4, 500);  // 답변
+  sheet.setColumnWidth(5, 250);  // 출처
+  sheet.setColumnWidth(6, 80);   // 출처수
+  sheet.setColumnWidth(7, 80);   // 신뢰도
+
+  sheet.setFrozenRows(1);
+
+  // 샘플 데이터
+  const sampleData = [
+    [
+      new Date(),
+      'sess_sample_001',
+      '재임용 심사 기준은 무엇인가요?',
+      '재임용 심사는 교육, 연구, 봉사 영역을 종합적으로 평가합니다...',
+      '교원인사규정.md',
+      1,
+      0.85
+    ]
+  ];
+
+  sheet.getRange(2, 1, 1, headers.length).setValues(sampleData);
+  sheet.getRange(2, 1, 1, headers.length).setBackground('#fff3e0');
+
+  Logger.log('  - QA_이력 헤더 및 샘플 데이터 설정 완료');
 }
 
 // ============================================

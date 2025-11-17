@@ -38,7 +38,16 @@ const CONFIG = {
 
   // 로그 설정
   LOG_TEXT_MAX_LENGTH: 50,
-  DEBUG_MODE: false  // true로 설정하면 상세 로그 출력
+  DEBUG_MODE: false,  // true로 설정하면 상세 로그 출력
+
+  // 교무지원과 연락처 정보 (실제 정보로 수정 필요!)
+  ORG_INFO: {
+    NAME: '용인대학교 교무지원과',
+    PHONE: '031-8020-2114',  // TODO: 실제 전화번호로 수정
+    EMAIL: 'gyomu@yongin.ac.kr',  // TODO: 실제 이메일로 수정
+    LOCATION: '본관 1층 교무지원과',  // TODO: 실제 위치로 수정
+    WORKING_HOURS: '평일 09:00~18:00 (점심시간 12:00~13:00)'
+  }
 };
 
 // ==================== 설정 ====================
@@ -592,28 +601,41 @@ function generateAnswer(question, documents, config) {
     // Gemini API 호출 - Hallucination 방지를 위한 강화된 프롬프트
     let prompt;
 
+    // 연락처 정보 문자열 생성
+    const contactInfo = `
+📞 교무지원과 연락처:
+- 전화: ${CONFIG.ORG_INFO.PHONE}
+- 이메일: ${CONFIG.ORG_INFO.EMAIL}
+- 위치: ${CONFIG.ORG_INFO.LOCATION}
+- 업무시간: ${CONFIG.ORG_INFO.WORKING_HOURS}`;
+
     if (hasRAGContext) {
       // RAG 컨텍스트가 있는 경우: 반드시 문서 내용만 사용
-      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+      prompt = `당신은 ${CONFIG.ORG_INFO.NAME}의 AI 상담 챗봇입니다.
 
 ⚠️ **중요 지침**:
 1. 아래 제공된 문서 내용만을 기반으로 답변하세요
 2. 문서에 없는 내용은 절대 추측하거나 만들어내지 마세요
 3. 확실하지 않으면 "제공된 문서에서 해당 정보를 찾을 수 없습니다"라고 답변하세요
 4. 답변할 때 문서의 구체적인 내용을 인용하세요
+5. 추가 문의 안내 시 아래 연락처를 정확히 사용하세요:
+${contactInfo}
 
 ${question}
 
 답변 형식:
 - 문서 내용을 기반으로 한 명확한 답변
 - 관련 절차나 규정이 있다면 구체적으로 명시
-- 추가 정보가 필요하면 담당자 연락을 권유
+- 추가 문의 시 위의 연락처 정보를 포함
 
 답변:`;
     } else {
       // 일반 모드: 기본 프롬프트
-      prompt = `당신은 용인대학교 교무지원과의 AI 상담 챗봇입니다.
+      prompt = `당신은 ${CONFIG.ORG_INFO.NAME}의 AI 상담 챗봇입니다.
 다음 질문에 친절하고 정확하게 답변해주세요.
+
+📌 교무지원과 연락처 (추가 문의 시 안내):
+${contactInfo}
 
 질문: ${question}
 ${context}
@@ -621,9 +643,9 @@ ${context}
 답변은 다음 형식으로 작성해주세요:
 1. 명확하고 구체적인 답변
 2. 관련 규정이나 절차 안내
-3. 추가 문의가 필요한 경우 안내
+3. 추가 문의 시 위의 연락처 정보를 정확히 포함
 
-**주의**: 확실하지 않은 내용은 추측하지 말고, 담당자에게 문의하도록 안내하세요.
+**주의**: 확실하지 않은 내용은 추측하지 말고, 위의 연락처로 문의하도록 안내하세요.
 
 답변:`;
     }
