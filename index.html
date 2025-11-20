@@ -801,7 +801,7 @@
     // API 설정
     const API_CONFIG = {
       TIMEOUT_MS: 20000,  // Apps Script 타임아웃 30초 → 20초로 최적화
-      RAG_TIMEOUT_MS: 3000,  // RAG 타임아웃 3초
+      RAG_TIMEOUT_MS: 15000,  // RAG 타임아웃 15초 (Cloud Run 콜드 스타트 대응)
       RAG_MAX_RETRIES: 2,  // RAG 재시도 2번
       MAX_RETRIES: 3,
       RETRY_DELAY_MS: 1000,
