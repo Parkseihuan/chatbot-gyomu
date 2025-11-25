@@ -792,7 +792,7 @@
 
   <script>
     // ==================== RAG 설정 ====================
-    const RAG_API_URL = 'https://rag-api-424378449323.asia-northeast3.run.app';
+    const RAG_API_URL = 'https://petite-ghosts-ring.loca.lt';  // 로컬 서버 (localtunnel)
     const USE_RAG = true;  // RAG 사용 여부
 
     // ==================== Apps Script 설정 ====================
@@ -845,7 +845,10 @@
 
         const response = await fetch(`${RAG_API_URL}/health`, {
           method: 'GET',
-          signal: controller.signal
+          signal: controller.signal,
+          headers: {
+            'Bypass-Tunnel-Reminder': 'true'  // localtunnel 우회
+          }
         });
 
         clearTimeout(timeoutId);
@@ -1188,7 +1191,10 @@
 
             const ragResponse = await fetchRAGWithRetry(`${RAG_API_URL}/chat`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'Bypass-Tunnel-Reminder': 'true'  // localtunnel 우회
+              },
               body: JSON.stringify({
                 query: question,
                 top_k: 15  // 5 → 15로 증가하여 부록 등 상세 정보 포함
