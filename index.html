@@ -792,7 +792,7 @@
 
   <script>
     // ==================== RAG 설정 ====================
-    const RAG_API_URL = 'https://petite-ghosts-ring.loca.lt';  // 로컬 서버 (localtunnel)
+    const RAG_API_URL = 'https://door-oriented-settings-vsnet.trycloudflare.com';  // 로컬 서버 (Cloudflare Tunnel)
     const USE_RAG = true;  // RAG 사용 여부
 
     // ==================== Apps Script 설정 ====================
@@ -845,10 +845,7 @@
 
         const response = await fetch(`${RAG_API_URL}/health`, {
           method: 'GET',
-          signal: controller.signal,
-          headers: {
-            'Bypass-Tunnel-Reminder': 'true'  // localtunnel 우회
-          }
+          signal: controller.signal
         });
 
         clearTimeout(timeoutId);
@@ -1192,8 +1189,7 @@
             const ragResponse = await fetchRAGWithRetry(`${RAG_API_URL}/chat`, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'Bypass-Tunnel-Reminder': 'true'  // localtunnel 우회
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify({
                 query: question,
