@@ -792,7 +792,7 @@
 
   <script>
     // ==================== RAG 설정 ====================
-    const RAG_API_URL = 'https://distributors-institutes-ships-vegetables.trycloudflare.com';  // 로컬 서버 (Cloudflare Tunnel)
+    const RAG_API_URL = 'https://buyers-creations-healthcare-meet.trycloudflare.com';  // 로컬 서버 (Cloudflare Tunnel)
     const USE_RAG = true;  // RAG 사용 여부
 
     // ==================== Apps Script 설정 ====================
@@ -1412,18 +1412,28 @@
         if (options.sources && options.sources.length > 0) {
           sourcesHtml = '<div class="sources"><div class="sources-title">📚 참고 문서</div>';
 
-          options.sources.forEach((source, index) => {
-            // 정규화된 객체 형식으로 처리 (filename, category, source 속성)
-            const filename = source.filename || source.name || String(source);
-            const category = source.category || '문서';
+          // 첫 번째 문서만 표시
+          const firstSource = options.sources[0];
+          const filename = firstSource.filename || firstSource.name || String(firstSource);
+          const category = firstSource.category || '문서';
 
+          sourcesHtml += `
+            <div class="source-item">
+              <span class="source-category">${category}</span>
+              <span>${filename}</span>
+            </div>
+          `;
+
+          // 나머지 문서가 있으면 요약 표시
+          if (options.sources.length > 1) {
+            const remainingCount = options.sources.length - 1;
             sourcesHtml += `
-              <div class="source-item">
-                <span class="source-category">${category}</span>
-                <span>${filename}</span>
+              <div class="source-item" style="color: #666; font-style: italic;">
+                외 ${remainingCount}개 문서
               </div>
             `;
-          });
+          }
+
           sourcesHtml += '</div>';
         }
 
