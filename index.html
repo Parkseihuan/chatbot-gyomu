@@ -255,14 +255,28 @@
     /* 마크다운 스타일 */
     .markdown-content {
       word-wrap: break-word;
+      line-height: 1.7;
     }
 
     .markdown-content p {
-      margin: 0 0 12px 0;
+      margin: 0 0 10px 0;
+      line-height: 1.7;
     }
 
     .markdown-content p:last-child {
       margin-bottom: 0;
+    }
+
+    /* br 태그 사용 시 일관된 간격 */
+    .markdown-content br {
+      content: "";
+      display: block;
+      margin: 4px 0;
+    }
+
+    /* 이모지로 시작하는 문단의 상단 여백 조정 */
+    .markdown-content p:has(br:first-child) {
+      margin-top: 8px;
     }
 
     .markdown-content h1,
@@ -1741,6 +1755,16 @@
     function parseMarkdown(text) {
       if (!text) return '';
 
+      // 1. 먼저 역슬래시 이스케이프 문자 처리 (Gemini가 마크다운에서 이스케이프한 문자들)
+      text = text.replace(/\\</g, '<');
+      text = text.replace(/\\>/g, '>');
+      text = text.replace(/\\\(/g, '(');
+      text = text.replace(/\\\)/g, ')');
+      text = text.replace(/\\\[/g, '[');
+      text = text.replace(/\\\]/g, ']');
+      text = text.replace(/\\\{/g, '{');
+      text = text.replace(/\\\}/g, '}');
+
       const codeBlocks = [];
       const inlineCodes = [];
 
@@ -1767,7 +1791,8 @@
       html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
       html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
       html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-      html = html.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
+      // 이탤릭 처리를 더 엄격하게: 단어 경계에서만 작동하도록 수정
+      html = html.replace(/\b\*([^\s*][^*]*?)\*\b/g, '<em>$1</em>');
       html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
         if (url.match(/^https?:\/\//i)) {
           return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
