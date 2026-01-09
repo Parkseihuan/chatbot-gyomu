@@ -343,8 +343,14 @@
     }
 
     .markdown-content li {
-      margin: 4px 0;
+      margin: 2px 0;
       line-height: 1.6;
+    }
+
+    /* 연락처 정보 리스트는 더 간격을 줄임 */
+    .markdown-content ul li:has(a[href^="mailto:"]),
+    .markdown-content ul li:has(a[href^="tel:"]) {
+      margin: 1px 0;
     }
 
     .markdown-content a {
@@ -375,6 +381,12 @@
       border-radius: 12px;
       font-size: 11px;
       font-weight: 600;
+      cursor: help;
+      transition: transform 0.2s;
+    }
+
+    .confidence-badge:hover {
+      transform: scale(1.05);
     }
 
     .confidence-high { background: #d1fae5; color: #065f46; }
@@ -418,6 +430,37 @@
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .source-toggle {
+      background: #eef2ff !important;
+      border: 1px solid #c7d2fe;
+      transition: all 0.2s;
+    }
+
+    .source-toggle:hover {
+      background: #e0e7ff !important;
+      border-color: #a5b4fc;
+      transform: translateY(-1px);
+    }
+
+    .source-toggle:active {
+      transform: translateY(0);
+    }
+
+    .hidden-sources {
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-5px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
     .source-category {
@@ -993,6 +1036,22 @@
       }, API_CONFIG.BUTTON_FEEDBACK_DELAY_MS);
     }
 
+    // 참고 문서 전체 목록 토글
+    function toggleSources(sourceId) {
+      const hiddenSources = document.getElementById(sourceId);
+      const toggleText = document.getElementById(sourceId + '-text');
+
+      if (hiddenSources && toggleText) {
+        if (hiddenSources.style.display === 'none') {
+          hiddenSources.style.display = 'block';
+          toggleText.textContent = toggleText.textContent.replace('▼', '▲').replace('보기', '접기');
+        } else {
+          hiddenSources.style.display = 'none';
+          toggleText.textContent = toggleText.textContent.replace('▲', '▼').replace('접기', '보기');
+        }
+      }
+    }
+
     // ==================== 페이지 로드 ====================
     window.onload = function() {
       console.log('=== 챗봇 초기화 시작 ===');
@@ -1409,11 +1468,11 @@
 
         if (options.confidence) {
           if (options.confidence >= 0.8) {
-            confidenceBadge = '<span class="confidence-badge confidence-high">✓ 신뢰도 높음</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-high" title="RAG가 관련 문서를 찾아 답변했습니다">✓ 신뢰도 높음</span>';
           } else if (options.confidence >= 0.6) {
-            confidenceBadge = '<span class="confidence-badge confidence-medium">◐ 신뢰도 보통</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-medium" title="RAG가 관련 문서를 찾지 못해 일반 지식으로 답변했습니다">◐ 신뢰도 보통</span>';
           } else {
-            confidenceBadge = '<span class="confidence-badge confidence-low">! 신뢰도 낮음</span>';
+            confidenceBadge = '<span class="confidence-badge confidence-low" title="답변의 정확도가 낮을 수 있습니다. 담당자에게 문의하세요">! 신뢰도 낮음</span>';
           }
         }
 
@@ -1424,9 +1483,10 @@
 
         let sourcesHtml = '';
         if (options.sources && options.sources.length > 0) {
+          const sourceId = 'sources-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
           sourcesHtml = '<div class="sources"><div class="sources-title">📚 참고 문서</div>';
 
-          // 첫 번째 문서만 표시
+          // 첫 번째 문서 표시
           const firstSource = options.sources[0];
           const filename = firstSource.filename || firstSource.name || String(firstSource);
           const category = firstSource.category || '문서';
@@ -1438,12 +1498,29 @@
             </div>
           `;
 
-          // 나머지 문서가 있으면 요약 표시
+          // 나머지 문서가 있으면 숨김 처리 + 토글 버튼
           if (options.sources.length > 1) {
             const remainingCount = options.sources.length - 1;
+
+            // 나머지 문서 목록 (처음에는 숨김)
+            sourcesHtml += `<div id="${sourceId}" class="hidden-sources" style="display: none;">`;
+            for (let i = 1; i < options.sources.length; i++) {
+              const source = options.sources[i];
+              const srcFilename = source.filename || source.name || String(source);
+              const srcCategory = source.category || '문서';
+              sourcesHtml += `
+                <div class="source-item">
+                  <span class="source-category">${srcCategory}</span>
+                  <span>${srcFilename}</span>
+                </div>
+              `;
+            }
+            sourcesHtml += `</div>`;
+
+            // 토글 버튼
             sourcesHtml += `
-              <div class="source-item" style="color: #666; font-style: italic;">
-                외 ${remainingCount}개 문서
+              <div class="source-item source-toggle" onclick="toggleSources('${sourceId}')" style="color: #667eea; cursor: pointer; font-weight: 500;">
+                <span id="${sourceId}-text">▼ 외 ${remainingCount}개 문서 보기</span>
               </div>
             `;
           }
